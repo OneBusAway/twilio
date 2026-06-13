@@ -484,15 +484,26 @@ func (c *OneBusAwayClient) ensureAgencyIDsForSearch() error {
 		}
 	}
 
-	// 2) Graceful degradation: expired cached data
+	// 2) Capture expired cached data as a fallback, but do NOT short-circuit: we
+	// still attempt a refresh below so the daily refresh actually happens. Stale
+	// IDs are only applied if that refresh fails (graceful degradation).
+	var staleIDs []string
 	if cachedData, found, _ := c.cache.GetExpired(coverageAgencyIDsCacheKey); found {
 		if ids, ok := cachedData.([]string); ok && len(ids) > 0 {
-			// Keep searching with stale-but-available IDs.
-			c.storeAgencyPriority(ids)
-			logAgencyIDsForSearch("cache expired (stale coverage_agency_ids)", ids)
-			log.Printf("[OBA] agencies-with-coverage cache expired; continuing with stale agency IDs until refresh succeeds")
+			staleIDs = ids
+		}
+	}
+
+	// degradeToStale applies stale agency IDs when a refresh fails so stop search
+	// keeps working; it returns nil if stale IDs exist, otherwise the refresh error.
+	degradeToStale := func(reason string, refreshErr error) error {
+		if len(staleIDs) > 0 {
+			c.storeAgencyPriority(staleIDs)
+			logAgencyIDsForSearch("stale fallback (coverage_agency_ids)", staleIDs)
+			log.Printf("[OBA] agencies-with-coverage refresh failed (%s); continuing with stale agency IDs: %v", reason, refreshErr)
 			return nil
 		}
+		return refreshErr
 	}
 
 	// 3) Fetch from API
@@ -542,22 +553,22 @@ func (c *OneBusAwayClient) ensureAgencyIDsForSearch() error {
 		if strings.Contains(err.Error(), "circuit breaker is open") {
 			c.metrics.IncrementCircuitBreakerOpen()
 		}
-		return err
+		return degradeToStale("request error", err)
 	}
 
 	c.metrics.IncrementAPICall(responseTime)
 
 	if coverageResp.Code != 200 {
-		return fmt.Errorf("API error: %s (code %d)", coverageResp.Text, coverageResp.Code)
+		return degradeToStale("api error", fmt.Errorf("API error: %s (code %d)", coverageResp.Text, coverageResp.Code))
 	}
 	if len(coverageResp.Data.List) == 0 {
-		return fmt.Errorf("no agencies-with-coverage agencies found")
+		return degradeToStale("empty agency list", fmt.Errorf("no agencies-with-coverage agencies found"))
 	}
 
 	// Extract unique agency IDs preserving API order.
 	ids := extractAgencyIDsFromCoverageList(coverageResp.Data.List)
 	if len(ids) == 0 {
-		return fmt.Errorf("agencies-with-coverage returned no valid agency IDs")
+		return degradeToStale("no valid agency IDs", fmt.Errorf("agencies-with-coverage returned no valid agency IDs"))
 	}
 
 	// Apply to search ordering.
