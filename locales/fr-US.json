@@ -1,5 +1,6 @@
 {
   "voice.welcome": "Bienvenue aux informations de transport {brand}. Veuillez entrer votre ID d'arrêt suivi de la touche dièse.",
+  "voice.timeout": "Désolé, je n'ai rien entendu. Veuillez rappeler et réessayer.",
   "voice.error.invalid_request": "Format de demande invalide.",
   "voice.error.no_stops_found": "Désolé, je n'ai trouvé aucun arrêt avec cet ID. Veuillez vérifier l'ID de l'arrêt et réessayer.",
   "voice.error.template_failed": "Erreur lors de la génération de la réponse.",
@@ -25,8 +26,10 @@
   "sms.no_arrivals": "Aucune arrivée prochaine trouvée pour cet arrêt.",
   "sms.arrival.stop_label": "Arrêt",
   "sms.arrival.route_to": "Ligne %s vers %s : %s",
+  "sms.more.no_additional": "Aucun bus supplémentaire dans cette plage. Réessayez 'more' plus tard ou envoyez un nouvel ID d'arrêt.",
   "sms.service_unavailable": "Le service {brand} est temporairement indisponible. Veuillez réessayer.",
   "sms.error.invalid_choice": "Veuillez choisir un numéro entre 1 et %d.",
+  "sms.error.no_active_session": "Aucune sélection active. Envoyez un ID d'arrêt pour commencer.",
   "voice.error.invalid_stop_id": "ID d'arrêt invalide. Veuillez réessayer avec un ID d'arrêt valide.",
   "voice.error.invalid_choice": "Veuillez appuyer sur un numéro entre 1 et %d.",
   "voice.error.no_digits": "Je n'ai reçu aucun chiffre. Veuillez rappeler.",

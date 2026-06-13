@@ -148,10 +148,9 @@ func (h *Handler) respondVoiceStopDisambiguation(c *gin.Context, fromPhone, stop
 		NumDigits:     "1",
 		InnerElements: innerElts,
 	}
+	// GetString falls back to the default locale and ultimately the key name, so
+	// it never returns an empty string; a manual fallback here would be dead code.
 	timeoutMsg := h.LocalizationManager.GetString("voice.timeout", language)
-	if timeoutMsg == "" {
-		timeoutMsg = h.LocalizationManager.GetString("voice.error.timeout", language)
-	}
 	timeoutSay := &twiml.VoiceSay{
 		Message:  timeoutMsg,
 		Language: language,
@@ -272,7 +271,11 @@ func (h *Handler) getAndFormatVoiceArrivalsWithSession(c *gin.Context, phoneNumb
 
 	// Get the human-readable stop name instead of using the technical stop ID
 	stopName := ""
-	if stopInfo, err := h.OBAClient.GetStopInfo(fullStopID); err == nil && stopInfo != nil {
+	stopInfo, err := h.OBAClient.GetStopInfo(fullStopID)
+	if err != nil {
+		log.Printf("Failed to get stop info for %s: %v", fullStopID, err)
+	}
+	if err == nil && stopInfo != nil && stopInfo.StopName != "" {
 		stopName = stopInfo.StopName
 	} else {
 		// Fall back to stop ID if we can't get the stop name

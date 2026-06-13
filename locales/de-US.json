@@ -1,5 +1,6 @@
 {
   "voice.welcome": "Willkommen bei {brand} Verkehrsinformationen. Bitte geben Sie Ihre Haltestellen-ID gefolgt von der Raute-Taste ein.",
+  "voice.timeout": "Entschuldigung, ich habe nichts gehört. Bitte rufen Sie erneut an und versuchen Sie es noch einmal.",
   "voice.error.invalid_request": "Ungültiges Anforderungsformat.",
   "voice.error.no_stops_found": "Entschuldigung, ich konnte keine Haltestellen mit dieser ID finden. Bitte überprüfen Sie die Haltestellen-ID und versuchen Sie es erneut.",
   "voice.error.template_failed": "Fehler beim Generieren der Antwort.",
@@ -25,8 +26,10 @@
   "sms.no_arrivals": "Keine bevorstehenden Ankünfte für diese Haltestelle gefunden.",
   "sms.arrival.stop_label": "Haltestelle",
   "sms.arrival.route_to": "Linie %s nach %s: %s",
+  "sms.more.no_additional": "Keine weiteren Busse in diesem Zeitraum. Versuchen Sie es später erneut mit 'more' oder senden Sie eine neue Haltestellen-ID.",
   "sms.service_unavailable": "{brand}-Service ist vorübergehend nicht verfügbar. Bitte erneut versuchen.",
   "sms.error.invalid_choice": "Bitte wählen Sie eine Nummer zwischen 1 und %d.",
+  "sms.error.no_active_session": "Keine aktive Auswahl. Senden Sie eine Haltestellen-ID, um zu beginnen.",
   "voice.error.invalid_stop_id": "Ungültige Haltestellen-ID. Bitte rufen Sie erneut mit einer gültigen Haltestellen-ID an.",
   "voice.error.invalid_choice": "Bitte drücken Sie eine Nummer zwischen 1 und %d.",
   "voice.error.no_digits": "Ich habe keine Ziffern erhalten. Bitte rufen Sie erneut an.",

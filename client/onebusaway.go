@@ -421,7 +421,14 @@ func NewOneBusAwayClientWithConfig(baseURL, apiKey string, config *ClientConfig)
 	}, nil
 }
 
-// getAgencyList returns the configured agency list with priority ordering
+// getAgencyList returns the configured agency list with priority ordering.
+//
+// TODO(data-race): c.config.AgencyPriority is read here (called from goroutines
+// spawned by FindAllMatchingStops) while ensureAgencyIDsForSearch and
+// SetAgencyPriority write it without holding a mutex. The InitializeCoverage
+// cache-hit path now calls ensureAgencyIDsForSearch on every health check, which
+// makes a concurrent read/write more likely. Guard AgencyPriority with a mutex
+// (or store it atomically) in a follow-up.
 func (c *OneBusAwayClient) getAgencyList() []string {
 	if len(c.config.AgencyPriority) > 0 {
 		return c.config.AgencyPriority
@@ -590,8 +597,12 @@ func (c *OneBusAwayClient) InitializeCoverage() error {
 			c.metrics.IncrementCacheHits()
 			c.coverageArea = coverageArea
 			// Even if coverage areas are cached, we still need to refresh
-			// agency IDs used for stop searching once per day.
-			_ = c.ensureAgencyIDsForSearch()
+			// agency IDs used for stop searching once per day. Log on failure so
+			// that silently falling back to the hardcoded agency defaults (e.g.
+			// API down, circuit breaker open, no stale cache) is diagnosable.
+			if err := c.ensureAgencyIDsForSearch(); err != nil {
+				log.Printf("Failed to refresh agency IDs for search (using existing agency priority): %v", err)
+			}
 			return nil
 		}
 	}

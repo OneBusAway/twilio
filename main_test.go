@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -378,4 +379,35 @@ func TestTwiMLGeneration(t *testing.T) {
 	assert.Contains(t, body, "<?xml version=\"1.0\"")
 	assert.Contains(t, body, "<Response>")
 	assert.Contains(t, body, "</Response>")
+}
+
+func TestParseEnvInt(t *testing.T) {
+	const name = "TEST_PARSE_ENV_INT"
+
+	tests := []struct {
+		desc     string
+		set      bool
+		value    string
+		fallback int
+		want     int
+	}{
+		{desc: "unset returns default", set: false, fallback: 20, want: 20},
+		{desc: "empty returns default", set: true, value: "", fallback: 20, want: 20},
+		{desc: "valid positive parses", set: true, value: "30", fallback: 20, want: 30},
+		{desc: "zero parses", set: true, value: "0", fallback: 20, want: 0},
+		{desc: "negative returns default", set: true, value: "-5", fallback: 20, want: 20},
+		{desc: "non-numeric returns default", set: true, value: "abc", fallback: 20, want: 20},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			if tc.set {
+				t.Setenv(name, tc.value)
+			} else {
+				_ = os.Unsetenv(name)
+			}
+			got := parseEnvInt(name, tc.fallback)
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }

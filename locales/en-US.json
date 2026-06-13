@@ -29,6 +29,7 @@
   "sms.more.no_additional": "No additional buses in this time range. Try 'more' again later or send a new stop ID.",
   "sms.service_unavailable": "{brand} service is temporarily unavailable. Please try again.",
   "sms.error.invalid_choice": "Please choose a number between 1 and %d.",
+  "sms.error.no_active_session": "No active selection. Please send a stop ID to get started.",
   "voice.error.invalid_stop_id": "Invalid stop ID. Please try calling again with a valid stop ID.",
   "voice.error.invalid_choice": "Please press a number between 1 and %d.",
   "voice.error.no_digits": "I didn't receive any digits. Please try calling again.",

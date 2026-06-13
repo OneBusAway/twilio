@@ -1,5 +1,6 @@
 {
   "voice.welcome": "Bem-vindo às informações de trânsito {brand}. Por favor, digite o ID da sua parada seguido da tecla sustenido.",
+  "voice.timeout": "Desculpe, não ouvi nada. Por favor, ligue novamente e tente outra vez.",
   "voice.error.invalid_request": "Formato de solicitação inválido.",
   "voice.error.no_stops_found": "Desculpe, não consegui encontrar nenhuma parada com esse ID. Por favor, verifique o ID da parada e tente novamente.",
   "voice.error.template_failed": "Erro ao gerar resposta.",
@@ -25,8 +26,10 @@
   "sms.no_arrivals": "Nenhuma chegada próxima encontrada para esta parada.",
   "sms.arrival.stop_label": "Parada",
   "sms.arrival.route_to": "Linha %s para %s: %s",
+  "sms.more.no_additional": "Não há mais ônibus neste intervalo de tempo. Tente 'more' mais tarde ou envie um novo ID de parada.",
   "sms.service_unavailable": "O serviço {brand} está temporariamente indisponível. Por favor, tente novamente.",
   "sms.error.invalid_choice": "Por favor, escolha um número entre 1 e %d.",
+  "sms.error.no_active_session": "Nenhuma seleção ativa. Envie um ID de parada para começar.",
   "voice.error.invalid_stop_id": "ID de parada inválido. Por favor, ligue novamente com um ID de parada válido.",
   "voice.error.invalid_choice": "Por favor, pressione um número entre 1 e %d.",
   "voice.error.no_digits": "Não recebi nenhum dígito. Por favor, tente ligar novamente.",

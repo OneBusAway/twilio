@@ -1,5 +1,6 @@
 {
   "voice.welcome": "{brand} 대중교통 정보 서비스에 오신 것을 환영합니다. 정류장 ID를 입력한 후 우물정자 키를 눌러 주세요.",
+  "voice.timeout": "죄송합니다. 아무 소리도 들리지 않았습니다. 다시 전화해 주세요.",
   "voice.error.invalid_request": "잘못된 요청 형식입니다.",
   "voice.error.no_stops_found": "죄송합니다. 해당 ID로 정류장을 찾을 수 없습니다. 정류장 ID를 확인하고 다시 시도해 주세요.",
   "voice.error.template_failed": "응답 생성 중 오류가 발생했습니다.",
@@ -25,8 +26,10 @@
   "sms.no_arrivals": "이 정류장에 예정된 도착 정보가 없습니다.",
   "sms.arrival.stop_label": "정류장",
   "sms.arrival.route_to": "%s번 %s행: %s",
+  "sms.more.no_additional": "이 시간대에 추가 버스가 없습니다. 나중에 'more'를 다시 시도하거나 새 정류장 ID를 보내세요.",
   "sms.service_unavailable": "{brand} 서비스가 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
   "sms.error.invalid_choice": "1부터 %d 사이의 숫자를 선택해 주세요.",
+  "sms.error.no_active_session": "활성화된 선택이 없습니다. 시작하려면 정류장 ID를 보내주세요.",
   "voice.error.invalid_stop_id": "잘못된 정류장 ID입니다. 올바른 정류장 ID로 다시 전화해 주세요.",
   "voice.error.invalid_choice": "1부터 %d 사이의 숫자를 눌러주세요.",
   "voice.error.no_digits": "숫자를 받지 못했습니다. 다시 전화해 주세요.",

@@ -1,5 +1,6 @@
 {
   "voice.welcome": "Witamy w informacjach o transporcie {brand}. Proszę wprowadzić ID przystanku, a następnie nacisnąć klawisz kratki.",
+  "voice.timeout": "Przepraszam, nic nie usłyszałem. Zadzwoń ponownie i spróbuj jeszcze raz.",
   "voice.error.invalid_request": "Nieprawidłowy format żądania.",
   "voice.error.no_stops_found": "Przepraszam, nie mogłem znaleźć żadnych przystanków z tym ID. Proszę sprawdzić ID przystanku i spróbować ponownie.",
   "voice.error.template_failed": "Błąd podczas generowania odpowiedzi.",
@@ -28,6 +29,7 @@
   "sms.more.no_additional": "Brak kolejnych autobusów w tym przedziale. Spróbuj „more” później lub podaj nowy przystanek.",
   "sms.service_unavailable": "Usługa {brand} jest tymczasowo niedostępna. Proszę spróbować ponownie.",
   "sms.error.invalid_choice": "Proszę wybrać liczbę między 1 a %d.",
+  "sms.error.no_active_session": "Brak aktywnego wyboru. Wyślij identyfikator przystanku, aby rozpocząć.",
   "voice.error.invalid_stop_id": "Nieprawidłowy ID przystanku. Proszę zadzwonić ponownie z prawidłowym ID przystanku.",
   "voice.error.invalid_choice": "Proszę nacisnąć liczbę między 1 a %d.",
   "voice.error.no_digits": "Nie otrzymałem żadnych cyfr. Proszę spróbować zadzwonić ponownie.",

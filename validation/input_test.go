@@ -60,9 +60,9 @@ func TestValidateStopID(t *testing.T) {
 		},
 		{
 			name:        "valid maximum length stop ID",
-			input:       "1234567890",
+			input:       "12345678901234567890",
 			expectError: false,
-			description: "Maximum length stop ID should pass",
+			description: "20-character stop ID at maximum length should pass",
 		},
 		{
 			name:        "empty stop ID",

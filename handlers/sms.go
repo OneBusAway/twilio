@@ -203,15 +203,18 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 }
 
 func (h *SMSHandler) handleDisambiguationChoice(c *gin.Context, req models.TwilioSMSRequest, choice int) {
+	language := h.getLanguageForUser(req.From)
 	session := h.SessionStore.GetDisambiguationSession(req.From)
 	if session == nil {
-		twiml, _ := formatters.GenerateTwiMLSMS("No active selection. Please send a stop ID to get started.")
+		errorMsg := h.LocalizationManager.GetString("sms.error.no_active_session", language)
+		twiml, _ := formatters.GenerateTwiMLSMS(errorMsg)
 		c.String(http.StatusOK, twiml)
 		return
 	}
 
 	if choice < 1 || choice > len(session.StopOptions) {
-		twiml, _ := formatters.GenerateTwiMLSMS(fmt.Sprintf("Please choose a number between 1 and %d.", len(session.StopOptions)))
+		errorMsg := h.LocalizationManager.GetString("sms.error.invalid_choice", language, len(session.StopOptions))
+		twiml, _ := formatters.GenerateTwiMLSMS(errorMsg)
 		c.String(http.StatusOK, twiml)
 		return
 	}
@@ -257,6 +260,15 @@ func (h *SMSHandler) getAndFormatArrivalsWithStopNameAndSession(c *gin.Context, 
 
 	// Use paged continuation for SMS: "more" returns the next chunk, not an arbitrary time jump.
 	// ArrivalHorizonShownMinutes stores how many arrivals were already shown in this session.
+	//
+	// TRADEOFF: this is a positional offset into a list that is re-fetched on every
+	// request. ProcessArrivals filters out departed buses (arrivalTime <= now), so the
+	// head of the sorted list shrinks as time passes. If a bus at the head departs
+	// between the first page and a later "more", the list shifts left and the arrival
+	// now sitting at this offset can be skipped. A content-based cursor (e.g. the last
+	// shown predicted arrival time) would be stable across re-fetches; the positional
+	// offset is kept here for simplicity, accepting that a boundary arrival may be
+	// skipped in the window between requests.
 	offset := session.ArrivalHorizonShownMinutes
 	if offset < 0 {
 		offset = 0
@@ -284,7 +296,11 @@ func (h *SMSHandler) getAndFormatArrivalsWithStopNameAndSession(c *gin.Context, 
 
 	// If we don't have a display name yet, try fetching stop info to obtain the stop name.
 	if stopDisplayName == "" {
-		if stopInfo, err := h.OBAClient.GetStopInfo(fullStopID); err == nil && stopInfo != nil && stopInfo.StopName != "" {
+		stopInfo, err := h.OBAClient.GetStopInfo(fullStopID)
+		if err != nil {
+			log.Printf("Failed to get stop info for %s: %v", fullStopID, err)
+		}
+		if err == nil && stopInfo != nil && stopInfo.StopName != "" {
 			stopDisplayName = stopInfo.StopName
 		} else if obaResp.Data.Entry.StopId != "" {
 			// Last resort: fall back to stop ID (works even if name can't be resolved).

@@ -293,5 +293,9 @@ func parseEnvInt(name string, defaultValue int) int {
 		log.Printf("Invalid int for %s=%q, using default %d", name, v, defaultValue)
 		return defaultValue
 	}
+	if parsed < 0 {
+		log.Printf("Invalid negative int for %s=%q, using default %d", name, v, defaultValue)
+		return defaultValue
+	}
 	return parsed
 }
