@@ -16,54 +16,88 @@ import (
 )
 
 func (h *Handler) HandleFindStop(c *gin.Context) {
+	req, ok := h.bindFindStopRequest(c)
+	if !ok {
+		return
+	}
+
+	c.Header("Content-Type", "text/xml")
+
+	// A single digit may be a selection from a pending disambiguation prompt.
+	if h.tryHandleDisambiguationChoice(c, req) {
+		return
+	}
+
+	h.SessionStore.ClearDisambiguationSession(req.From)
+
+	stopID, ok := h.resolveStopID(c, req)
+	if !ok {
+		return
+	}
+
+	h.respondForStopID(c, req, stopID)
+}
+
+// bindFindStopRequest binds and validates the incoming request. On failure it
+// writes the error response and returns ok=false.
+func (h *Handler) bindFindStopRequest(c *gin.Context) (models.TwilioVoiceRequest, bool) {
 	var req models.TwilioVoiceRequest
 	if err := c.ShouldBind(&req); err != nil {
 		language := h.getLanguageFromRequest(c)
 		h.ErrorHandler.HandleValidationError(c, err, "voice", language)
-		return
+		return req, false
 	}
 
-	// Validate phone number
 	if err := validation.ValidatePhoneNumber(req.From); err != nil {
 		language := h.getLanguageFromRequest(c)
 		h.ErrorHandler.HandleValidationError(c, err, "voice", language)
-		return
+		return req, false
 	}
 
-	// Validate call SID if provided
+	// A malformed call SID is logged but not fatal: the call can still proceed.
 	if req.CallSid != "" {
 		if err := validation.ValidateTwilioCallSid(req.CallSid); err != nil {
 			log.Printf("Invalid call SID from %s: %v", req.From, err)
 		}
 	}
 
-	// Sanitize digits input
 	req.Digits = validation.SanitizeUserInput(req.Digits)
-
 	log.Printf("Received voice input from %s: %s", req.From, req.Digits)
 
-	c.Header("Content-Type", "text/xml")
+	return req, true
+}
 
-	if choice := h.parseDisambiguationChoice(req.Digits); choice > 0 {
-		if session := h.SessionStore.GetDisambiguationSession(req.From); session != nil {
-			maxChoices := len(session.StopOptions)
-			if maxChoices > 9 {
-				maxChoices = 9
-			}
-			if err := validation.ValidateDisambiguationChoice(req.Digits, maxChoices); err != nil {
-				log.Printf("Invalid disambiguation choice from %s: %v", req.From, err)
-				language := h.getLanguageFromRequest(c)
-				errorMsg := h.LocalizationManager.GetString("voice.error.invalid_choice", language, maxChoices)
-				h.respondVoiceSay(c, language, errorMsg)
-				return
-			}
-			h.handleVoiceDisambiguationChoice(c, req, choice)
-			return
-		}
+// tryHandleDisambiguationChoice handles the digits as a choice for a pending
+// disambiguation session. It returns true when the request was handled (a
+// response was written); false means the digits should be treated as a stop ID.
+func (h *Handler) tryHandleDisambiguationChoice(c *gin.Context, req models.TwilioVoiceRequest) bool {
+	choice := h.parseDisambiguationChoice(req.Digits)
+	if choice == 0 {
+		return false
 	}
 
-	h.SessionStore.ClearDisambiguationSession(req.From)
+	session := h.SessionStore.GetDisambiguationSession(req.From)
+	if session == nil {
+		return false
+	}
 
+	maxChoices := clampChoiceCount(len(session.StopOptions))
+
+	if err := validation.ValidateDisambiguationChoice(req.Digits, maxChoices); err != nil {
+		log.Printf("Invalid disambiguation choice from %s: %v", req.From, err)
+		language := h.getLanguageFromRequest(c)
+		errorMsg := h.LocalizationManager.GetString("voice.error.invalid_choice", language, maxChoices)
+		h.respondVoiceSay(c, language, errorMsg)
+		return true
+	}
+
+	h.handleVoiceDisambiguationChoice(c, req, choice)
+	return true
+}
+
+// resolveStopID extracts and validates the stop ID from the request digits. On
+// failure it writes the error response and returns ok=false.
+func (h *Handler) resolveStopID(c *gin.Context, req models.TwilioVoiceRequest) (string, bool) {
 	stopID := req.Digits
 	if stopID == "" {
 		language := h.getLanguageFromRequest(c)
@@ -72,19 +106,23 @@ func (h *Handler) HandleFindStop(c *gin.Context) {
 			errorMsg = "I didn't receive any digits. Please try calling again."
 		}
 		h.respondVoiceSay(c, language, errorMsg)
-		return
+		return "", false
 	}
 
-	// Validate stop ID format and security
 	if err := validation.ValidateStopID(stopID); err != nil {
 		log.Printf("Invalid stop ID from %s: %s, error: %v", req.From, stopID, err)
 		language := h.getLanguageFromRequest(c)
 		errorMsg := h.LocalizationManager.GetString("voice.error.invalid_stop_id", language)
 		h.respondVoiceSay(c, language, errorMsg)
-		return
+		return "", false
 	}
 
-	// Find all matching stops for the given ID
+	return stopID, true
+}
+
+// respondForStopID looks up the stops matching stopID and responds: arrivals for
+// a single match, a disambiguation prompt for several, or an error otherwise.
+func (h *Handler) respondForStopID(c *gin.Context, req models.TwilioVoiceRequest, stopID string) {
 	matchingStops, err := h.OBAClient.FindAllMatchingStops(stopID)
 	if err != nil {
 		language := h.getLanguageFromRequest(c)
@@ -167,6 +205,18 @@ func (h *Handler) respondVoiceStopDisambiguation(c *gin.Context, fromPhone, stop
 	c.String(http.StatusOK, twimlResult)
 }
 
+// maxVoiceChoices is the most disambiguation options a caller can select, bounded
+// by the single DTMF digit (1-9) used to choose one.
+const maxVoiceChoices = 9
+
+// clampChoiceCount limits a number of options to what a single keypress can select.
+func clampChoiceCount(n int) int {
+	if n > maxVoiceChoices {
+		return maxVoiceChoices
+	}
+	return n
+}
+
 // parseDisambiguationChoice checks if the input digits represent a single-digit choice (1-9)
 func (h *Handler) parseDisambiguationChoice(digits string) int {
 	if len(digits) != 1 {
@@ -174,7 +224,7 @@ func (h *Handler) parseDisambiguationChoice(digits string) int {
 	}
 
 	choice, err := strconv.Atoi(digits)
-	if err != nil || choice < 1 || choice > 9 {
+	if err != nil || choice < 1 || choice > maxVoiceChoices {
 		return 0
 	}
 
@@ -194,10 +244,7 @@ func (h *Handler) handleVoiceDisambiguationChoice(c *gin.Context, req models.Twi
 		return
 	}
 
-	effectiveMax := len(session.StopOptions)
-	if effectiveMax > 9 {
-		effectiveMax = 9
-	}
+	effectiveMax := clampChoiceCount(len(session.StopOptions))
 
 	if choice < 1 || choice > effectiveMax {
 		language := h.getLanguageFromRequest(c)
@@ -230,17 +277,14 @@ func (h *Handler) formatVoiceDisambiguationMessage(c *gin.Context, stops []model
 	}
 
 	// Limit to first 9 options for voice interface (single digit choices)
-	maxStops := len(stops)
-	if maxStops > 9 {
-		maxStops = 9
-	}
+	maxStops := clampChoiceCount(len(stops))
 
 	for i := 0; i < maxStops; i++ {
 		stop := stops[i]
 		msg += fmt.Sprintf("Press %d for %s. ", i+1, stop.StopName)
 	}
 
-	if len(stops) > 9 {
+	if len(stops) > maxVoiceChoices {
 		msg += "Only showing first 9 options. "
 	}
 
