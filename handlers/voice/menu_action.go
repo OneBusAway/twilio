@@ -3,6 +3,7 @@ package voice
 import (
 	"log"
 	"net/http"
+	"oba-twilio/analytics"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +20,7 @@ func (h *Handler) HandleVoiceMenuAction(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Received voice menu action from %s: %s", req.From, req.Digits)
+	log.Printf("Received voice menu action from %s: %s", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), req.Digits)
 
 	c.Header("Content-Type", "text/xml")
 
@@ -61,7 +62,7 @@ func (h *Handler) handleExtendDepartures(c *gin.Context, req models.TwilioVoiceR
 	// Get minutesAfter from query parameter
 	minutesAfterStr := c.Query("minutesAfter")
 	if minutesAfterStr == "" {
-		log.Printf("Missing minutesAfter parameter in request from %s", req.From)
+		log.Printf("Missing minutesAfter parameter in request from %s", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt))
 		language := h.getLanguageFromRequest(c)
 		errorMsg := h.LocalizationManager.GetString("error.internal_error", language)
 		if errorMsg == "" {
@@ -81,7 +82,7 @@ func (h *Handler) handleExtendDepartures(c *gin.Context, req models.TwilioVoiceR
 
 	newMinutesAfter, err := strconv.Atoi(minutesAfterStr)
 	if err != nil {
-		log.Printf("Invalid minutesAfter parameter: %s from %s", minutesAfterStr, req.From)
+		log.Printf("Invalid minutesAfter parameter: %s from %s", minutesAfterStr, analytics.HashPhoneNumber(req.From, h.analyticsHashSalt))
 		language := h.getLanguageFromRequest(c)
 		errorMsg := h.LocalizationManager.GetString("error.internal_error", language)
 		if errorMsg == "" {
@@ -102,7 +103,7 @@ func (h *Handler) handleExtendDepartures(c *gin.Context, req models.TwilioVoiceR
 	// Update the session
 	session.MinutesAfter = newMinutesAfter
 	if err := h.SessionStore.SetVoiceSession(req.From, session); err != nil {
-		log.Printf("Failed to update voice session for %s: %v", req.From, err)
+		log.Printf("Failed to update voice session for %s: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), err)
 		language := h.getLanguageFromRequest(c)
 		errorMsg := h.LocalizationManager.GetString("error.internal_error", language)
 		if errorMsg == "" {
@@ -120,7 +121,7 @@ func (h *Handler) handleExtendDepartures(c *gin.Context, req models.TwilioVoiceR
 		return
 	}
 
-	log.Printf("Extended departures window for %s to %d minutes", req.From, newMinutesAfter)
+	log.Printf("Extended departures window for %s to %d minutes", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), newMinutesAfter)
 
 	// Get arrivals with extended window
 	h.getAndFormatVoiceArrivalsWithSession(c, req.From, session.StopID, newMinutesAfter)
@@ -129,7 +130,7 @@ func (h *Handler) handleExtendDepartures(c *gin.Context, req models.TwilioVoiceR
 // handleReturnToMainMenu clears the voice session and returns to the start menu
 func (h *Handler) handleReturnToMainMenu(c *gin.Context, req models.TwilioVoiceRequest) {
 	h.SessionStore.ClearVoiceSession(req.From)
-	log.Printf("Cleared voice session for %s, returning to main menu", req.From)
+	log.Printf("Cleared voice session for %s, returning to main menu", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt))
 	h.returnToMainMenu(c)
 }
 
