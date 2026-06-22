@@ -229,7 +229,7 @@ Create a `.env` file or set environment variables:
 | **Server Configuration** | | | |
 | `PORT` | Server port number | `8080` | Optional |
 | **OneBusAway API Configuration** | | | |
-| `ONEBUSAWAY_API_KEY` | API key for OneBusAway server | `test` | Required |
+| `ONEBUSAWAY_API_KEY` | API key for OneBusAway server (no default; `test` is the public demo key for the Puget Sound server and works for local development) | - | Required |
 | `ONEBUSAWAY_BASE_URL` | OneBusAway API base URL | `https://api.pugetsound.onebusaway.org` | Optional |
 | **Localization** | | | |
 | `SUPPORTED_LANGUAGES` | Comma-separated list of supported language codes | `en-US` | Optional |
@@ -344,7 +344,7 @@ echo "web: ./oba-twilio" > Procfile
 
 # Deploy
 heroku create your-app-name
-heroku config:set ONEBUSAWAY_API_KEY=test
+heroku config:set ONEBUSAWAY_API_KEY=your_actual_api_key
 git push heroku main
 ```
 
