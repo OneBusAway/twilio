@@ -285,7 +285,7 @@ func (h *Handler) formatVoiceDisambiguationMessage(c *gin.Context, stops []model
 	}
 
 	if len(stops) > maxVoiceChoices {
-		msg += "Only showing first 9 options. "
+		msg += fmt.Sprintf("Only showing first %d options. ", maxVoiceChoices)
 	}
 
 	msg += "Which stop would you like?"

@@ -114,6 +114,7 @@ func TestHandleFindStop_InvalidPhoneNumber(t *testing.T) {
 
 	// Phone validation fails before any OBA lookup happens.
 	mockClient.AssertNotCalled(t, "FindAllMatchingStops", mock.Anything)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.NotEqual(t, "", w.Body.String())
 }
 
@@ -325,5 +326,8 @@ func TestGetAndFormatVoiceArrivals_LookupError(t *testing.T) {
 
 	h.getAndFormatVoiceArrivalsWithSession(c, "+14444444444", "1_12345", 0)
 
+	// A lookup failure should render a spoken error response, not just stop short.
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "<Say")
 	mockClient.AssertExpectations(t)
 }
