@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadConfigFromEnv(t *testing.T) {
@@ -263,4 +264,51 @@ func TestCreateManager(t *testing.T) {
 
 	err := manager.Close()
 	assert.NoError(t, err)
+}
+
+func TestResolveUmamiHostname(t *testing.T) {
+	assert.Equal(t, "explicit.example.org", resolveUmamiHostname("explicit.example.org", "https://api.pugetsound.onebusaway.org"))
+	assert.Equal(t, "api.pugetsound.onebusaway.org", resolveUmamiHostname("", "https://api.pugetsound.onebusaway.org"))
+	assert.Equal(t, defaultUmamiHostname, resolveUmamiHostname("", ""))
+	assert.Equal(t, defaultUmamiHostname, resolveUmamiHostname("", "::not a url::"))
+}
+
+func TestLoadUmamiConfig(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		t.Setenv("UMAMI_ENABLED", "")
+		c, err := loadUmamiConfig()
+		require.NoError(t, err)
+		assert.False(t, c.Enabled)
+	})
+
+	t.Run("missing url errors when enabled", func(t *testing.T) {
+		t.Setenv("UMAMI_ENABLED", "true")
+		t.Setenv("UMAMI_URL", "")
+		t.Setenv("UMAMI_WEBSITE_ID", "web-uuid")
+		_, err := loadUmamiConfig()
+		assert.Error(t, err)
+	})
+
+	t.Run("missing website id errors when enabled", func(t *testing.T) {
+		t.Setenv("UMAMI_ENABLED", "true")
+		t.Setenv("UMAMI_URL", "https://umami.example.com")
+		t.Setenv("UMAMI_WEBSITE_ID", "")
+		_, err := loadUmamiConfig()
+		assert.Error(t, err)
+	})
+
+	t.Run("full config", func(t *testing.T) {
+		t.Setenv("UMAMI_ENABLED", "true")
+		t.Setenv("UMAMI_URL", "https://umami.example.com")
+		t.Setenv("UMAMI_WEBSITE_ID", "web-uuid")
+		t.Setenv("UMAMI_HOSTNAME", "")
+		t.Setenv("ONEBUSAWAY_BASE_URL", "https://api.pugetsound.onebusaway.org")
+		c, err := loadUmamiConfig()
+		require.NoError(t, err)
+		assert.True(t, c.Enabled)
+		assert.Equal(t, "umami", c.Name)
+		assert.Equal(t, "https://umami.example.com", c.Config["server_url"])
+		assert.Equal(t, "web-uuid", c.Config["website_id"])
+		assert.Equal(t, "api.pugetsound.onebusaway.org", c.Config["hostname"])
+	})
 }

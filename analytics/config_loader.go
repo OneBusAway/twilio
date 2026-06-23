@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -67,6 +68,17 @@ func loadProviderConfigs() ([]ProviderConfig, error) {
 	} else if plausibleConfig.Enabled {
 		// Only add enabled providers
 		providers = append(providers, plausibleConfig)
+	}
+
+	// Umami provider
+	umamiConfig, err := loadUmamiConfig()
+	if err != nil {
+		if os.Getenv("UMAMI_ENABLED") == "true" {
+			return nil, fmt.Errorf("umami configuration error: %w", err)
+		}
+		// If Umami is not enabled, ignore the error and skip it
+	} else if umamiConfig.Enabled {
+		providers = append(providers, umamiConfig)
 	}
 
 	return providers, nil
@@ -150,4 +162,64 @@ func loadPlausibleConfig() (ProviderConfig, error) {
 // Provider registration must be done separately to avoid import cycles.
 func CreateManager(config Config) *Manager {
 	return NewManager(config)
+}
+
+// defaultUmamiHostname intentionally duplicates umami.DefaultHostname: the
+// analytics package configures the provider via a string map and does not import
+// the umami package. Keep both values in sync if either changes.
+const defaultUmamiHostname = "twilio.onebusaway.org"
+
+// resolveUmamiHostname picks the payload hostname: explicit override, else the
+// host of ONEBUSAWAY_BASE_URL, else a fixed sentinel (never empty).
+func resolveUmamiHostname(explicit, baseURL string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if baseURL != "" {
+		if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+			return u.Host
+		}
+	}
+	return defaultUmamiHostname
+}
+
+// loadUmamiConfig loads Umami provider configuration from the environment.
+func loadUmamiConfig() (ProviderConfig, error) {
+	enabled := false
+	if enabledStr := os.Getenv("UMAMI_ENABLED"); enabledStr != "" {
+		if parsed, err := strconv.ParseBool(enabledStr); err == nil {
+			enabled = parsed
+		}
+	}
+
+	config := ProviderConfig{
+		Name:    "umami",
+		Enabled: enabled,
+		Config:  make(map[string]interface{}),
+	}
+
+	if !enabled {
+		return config, nil
+	}
+
+	serverURL := os.Getenv("UMAMI_URL")
+	if serverURL == "" {
+		return config, fmt.Errorf("UMAMI_URL is required when Umami is enabled")
+	}
+	websiteID := os.Getenv("UMAMI_WEBSITE_ID")
+	if websiteID == "" {
+		return config, fmt.Errorf("UMAMI_WEBSITE_ID is required when Umami is enabled")
+	}
+
+	config.Config["server_url"] = serverURL
+	config.Config["website_id"] = websiteID
+	config.Config["hostname"] = resolveUmamiHostname(os.Getenv("UMAMI_HOSTNAME"), os.Getenv("ONEBUSAWAY_BASE_URL"))
+
+	if httpTimeout := os.Getenv("UMAMI_HTTP_TIMEOUT"); httpTimeout != "" {
+		if parsed, err := time.ParseDuration(httpTimeout); err == nil {
+			config.Config["http_timeout"] = parsed
+		}
+	}
+
+	return config, nil
 }
