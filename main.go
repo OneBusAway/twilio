@@ -16,6 +16,7 @@ import (
 
 	"oba-twilio/analytics"
 	"oba-twilio/analytics/providers/plausible"
+	"oba-twilio/analytics/providers/umami"
 	"oba-twilio/client"
 	"oba-twilio/handlers"
 	"oba-twilio/handlers/common"
@@ -129,6 +130,39 @@ func main() {
 
 				if err := analyticsManager.RegisterProvider("plausible", plausibleProvider); err != nil {
 					log.Printf("Failed to register plausible provider: %v", err)
+				}
+			}
+
+			if providerConfig.Name == "umami" && providerConfig.Enabled {
+				serverURL, ok := providerConfig.Config["server_url"].(string)
+				if !ok {
+					log.Printf("Invalid umami server_url configuration")
+					continue
+				}
+				websiteID, ok := providerConfig.Config["website_id"].(string)
+				if !ok {
+					log.Printf("Invalid umami website_id configuration")
+					continue
+				}
+
+				umamiConfig := umami.DefaultConfig()
+				umamiConfig.ServerURL = serverURL
+				umamiConfig.WebsiteID = websiteID
+				if hostname, ok := providerConfig.Config["hostname"].(string); ok {
+					umamiConfig.Hostname = hostname
+				}
+				if httpTimeout, ok := providerConfig.Config["http_timeout"].(time.Duration); ok {
+					umamiConfig.HTTPTimeout = httpTimeout
+				}
+
+				umamiProvider, err := umami.NewProvider(umamiConfig)
+				if err != nil {
+					log.Printf("Failed to create umami provider: %v", err)
+					continue
+				}
+
+				if err := analyticsManager.RegisterProvider("umami", umamiProvider); err != nil {
+					log.Printf("Failed to register umami provider: %v", err)
 				}
 			}
 		}
