@@ -23,12 +23,24 @@ const (
 // Accept E.164 numbers used by Twilio (e.g. +14445556666, +48500100200).
 var phoneRegex = regexp.MustCompile(`^\+[1-9]\d{7,14}$`)
 
-type SessionType int
+type sessionCategory int
+
+func (s sessionCategory) String() string {
+	switch s {
+	case disambiguation:
+		return "disambiguation"
+	case voice:
+		return "voice"
+	case sms:
+		return "sms"
+	}
+	return "unknown"
+}
 
 const (
-	Disambiguation SessionType = iota
-	Voice
-	Sms
+	disambiguation sessionCategory = iota
+	voice
+	sms
 )
 
 // SessionMetrics provides insights into session store performance
@@ -45,7 +57,7 @@ type SessionMetrics struct {
 
 // SessionEntry represents a session with metadata for efficient LRU management
 type SessionEntry struct {
-	sessionType SessionType // 0=disambiguation, 1=voice, 2=sms
+	sessionType sessionCategory
 	data        interface{}
 	createdAt   int64
 	accessedAt  int64
@@ -224,9 +236,9 @@ func (s *ImprovedSessionStore) validateSession(phoneNumber string, entry *Sessio
 	var timeout int64
 
 	switch entry.sessionType {
-	case Disambiguation, Voice: // disambiguation, voice
+	case disambiguation, voice:
 		timeout = SessionTimeoutMinutes * 60
-	case Sms: // SMS
+	case sms:
 		timeout = smsSessionTimeoutMinutes * 60
 	default:
 		return false
@@ -264,7 +276,7 @@ func (s *ImprovedSessionStore) evictLRUSessions(count int) {
 }
 
 // setSession is a generic method to set any type of session
-func (s *ImprovedSessionStore) setSession(phoneNumber string, data interface{}, sessionType SessionType) error {
+func (s *ImprovedSessionStore) setSession(phoneNumber string, data interface{}, sessionType sessionCategory) error {
 	if !phoneRegex.MatchString(phoneNumber) {
 		return fmt.Errorf("invalid phone number format: %s", phoneNumber)
 	}
@@ -289,15 +301,15 @@ func (s *ImprovedSessionStore) setSession(phoneNumber string, data interface{}, 
 
 	// Set timestamps based on session type
 	switch sessionType {
-	case Disambiguation:
+	case disambiguation:
 		if ds, ok := data.(*models.DisambiguationSession); ok {
 			ds.CreatedAt = now
 		}
-	case Voice:
+	case voice:
 		if vs, ok := data.(*models.VoiceSession); ok {
 			vs.CreatedAt = now
 		}
-	case Sms:
+	case sms:
 		if ss, ok := data.(*models.SMSSession); ok {
 			ss.CreatedAt = now
 			ss.LastQueryTime = now
@@ -315,7 +327,7 @@ func (s *ImprovedSessionStore) setSession(phoneNumber string, data interface{}, 
 }
 
 // getSession is a generic method to get any type of session
-func (s *ImprovedSessionStore) getSession(phoneNumber string, sessionType SessionType) interface{} {
+func (s *ImprovedSessionStore) getSession(phoneNumber string, sessionType sessionCategory) interface{} {
 	if !phoneRegex.MatchString(phoneNumber) {
 		return nil
 	}
@@ -362,11 +374,11 @@ func (s *ImprovedSessionStore) clearSession(phoneNumber string) {
 
 // Public API methods for disambiguation sessions
 func (s *ImprovedSessionStore) SetDisambiguationSession(phoneNumber string, session *models.DisambiguationSession) error {
-	return s.setSession(phoneNumber, session, Disambiguation)
+	return s.setSession(phoneNumber, session, disambiguation)
 }
 
 func (s *ImprovedSessionStore) GetDisambiguationSession(phoneNumber string) *models.DisambiguationSession {
-	if data := s.getSession(phoneNumber, Disambiguation); data != nil {
+	if data := s.getSession(phoneNumber, disambiguation); data != nil {
 		return data.(*models.DisambiguationSession)
 	}
 	return nil
@@ -378,11 +390,11 @@ func (s *ImprovedSessionStore) ClearDisambiguationSession(phoneNumber string) {
 
 // Public API methods for voice sessions
 func (s *ImprovedSessionStore) SetVoiceSession(phoneNumber string, session *models.VoiceSession) error {
-	return s.setSession(phoneNumber, session, Voice)
+	return s.setSession(phoneNumber, session, voice)
 }
 
 func (s *ImprovedSessionStore) GetVoiceSession(phoneNumber string) *models.VoiceSession {
-	if data := s.getSession(phoneNumber, Voice); data != nil {
+	if data := s.getSession(phoneNumber, voice); data != nil {
 		return data.(*models.VoiceSession)
 	}
 	return nil
@@ -394,11 +406,11 @@ func (s *ImprovedSessionStore) ClearVoiceSession(phoneNumber string) {
 
 // Public API methods for SMS sessions
 func (s *ImprovedSessionStore) SetSMSSession(phoneNumber string, session *models.SMSSession) error {
-	return s.setSession(phoneNumber, session, Sms)
+	return s.setSession(phoneNumber, session, sms)
 }
 
 func (s *ImprovedSessionStore) GetSMSSession(phoneNumber string) *models.SMSSession {
-	if data := s.getSession(phoneNumber, Sms); data != nil {
+	if data := s.getSession(phoneNumber, sms); data != nil {
 		return data.(*models.SMSSession)
 	}
 	return nil
@@ -462,13 +474,13 @@ func (s *ImprovedSessionStore) estimateMemoryUsage() int64 {
 	// Add estimated size of session data
 	for _, entry := range s.sessions {
 		switch entry.sessionType {
-		case Disambiguation:
+		case disambiguation:
 			if ds, ok := entry.data.(*models.DisambiguationSession); ok {
 				baseSize += int64(len(ds.StopOptions) * 100) // rough estimate per stop option
 			}
-		case Voice:
+		case voice:
 			baseSize += 100 // voice sessions are small
-		case Sms:
+		case sms:
 			baseSize += 200 // SMS sessions with language strings
 		}
 	}
@@ -554,24 +566,24 @@ func (s *ImprovedSessionStore) ExpireSession(phoneNumber string) {
 		// Set the creation time to an expired timestamp based on session type
 		var timeout int64
 		switch entry.sessionType {
-		case Disambiguation, Voice: // disambiguation, voice
+		case disambiguation, voice:
 			timeout = (SessionTimeoutMinutes + 1) * 60
-		case Sms: // SMS
+		case sms:
 			timeout = (smsSessionTimeoutMinutes + 1) * 60
 		}
 		entry.createdAt = time.Now().Unix() - timeout
 
 		// Update the session data timestamp as well
 		switch entry.sessionType {
-		case Disambiguation:
+		case disambiguation:
 			if ds, ok := entry.data.(*models.DisambiguationSession); ok {
 				ds.CreatedAt = entry.createdAt
 			}
-		case Voice:
+		case voice:
 			if vs, ok := entry.data.(*models.VoiceSession); ok {
 				vs.CreatedAt = entry.createdAt
 			}
-		case Sms:
+		case sms:
 			if ss, ok := entry.data.(*models.SMSSession); ok {
 				ss.CreatedAt = entry.createdAt
 			}
@@ -592,7 +604,7 @@ func (s *ImprovedSessionStore) SetExpiredSMSSession(phoneNumber string, session 
 	session.CreatedAt = expiredTime
 
 	entry := &SessionEntry{
-		sessionType: Sms,
+		sessionType: sms,
 		data:        session,
 		createdAt:   expiredTime,
 		accessedAt:  expiredTime,
