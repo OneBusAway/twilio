@@ -118,18 +118,23 @@ func TestAPIKeyValidation(t *testing.T) {
 		shouldFail bool
 	}{
 		{"Empty key should fail", "", true},
-		{"Test key should fail", "test", true},
-		{"TEST key should fail", "TEST", true},
-		{"Placeholder should fail", "placeholder", true},
+		{"Test key should pass", "test", false},
+		{"TEST key should pass", "TEST", false},
+		// "placeholder" was rejected before the issue #11 fix; any non-empty
+		// value is now accepted, so it must pass.
+		{"Placeholder should now pass", "placeholder", false},
 		{"Valid key should pass", "valid-api-key", false},
 		{"OneBusAway key should pass", "org.onebusaway.iphone", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test the validation logic without calling log.Fatal
-			isInvalid := tt.apiKey == "" || tt.apiKey == "test" || tt.apiKey == "TEST" || tt.apiKey == "placeholder"
-			assert.Equal(t, tt.shouldFail, isInvalid)
+			err := validateAPIKey(tt.apiKey)
+			if tt.shouldFail {
+				assert.ErrorContains(t, err, "ONEBUSAWAY_API_KEY")
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }

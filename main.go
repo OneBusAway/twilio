@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
@@ -23,6 +24,20 @@ import (
 	"oba-twilio/middleware"
 )
 
+// validateAPIKey ensures an OneBusAway API key was explicitly provided. The key
+// is required and has intentionally no default, so the server won't silently
+// start with no credentials. Only an empty value is rejected; any non-empty
+// value is accepted, including "test" — the public demo key for the Puget Sound
+// OneBusAway server, valid for local development. (An earlier check that also
+// rejected "test"/"placeholder" was removed: it broke that documented workflow.
+// See issue #11.)
+func validateAPIKey(apiKey string) error {
+	if apiKey == "" {
+		return errors.New("ONEBUSAWAY_API_KEY environment variable is required but not set")
+	}
+	return nil
+}
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using environment variables")
@@ -34,11 +49,8 @@ func main() {
 	}
 
 	obaAPIKey := os.Getenv("ONEBUSAWAY_API_KEY")
-	if obaAPIKey == "" {
-		log.Fatal("ONEBUSAWAY_API_KEY environment variable is required but not set")
-	}
-	if obaAPIKey == "test" || obaAPIKey == "TEST" || obaAPIKey == "placeholder" {
-		log.Fatal("Invalid API key detected. Please set a valid ONEBUSAWAY_API_KEY environment variable")
+	if err := validateAPIKey(obaAPIKey); err != nil {
+		log.Fatal(err)
 	}
 
 	obaBaseURL := os.Getenv("ONEBUSAWAY_BASE_URL")
