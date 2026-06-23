@@ -798,7 +798,7 @@ git commit -m "feat(umami): add provider HTTP emit with fire-and-forget POST"
 
 **Files:**
 - Modify: `analytics/config_loader.go`
-- Test: `analytics/config_loader_test.go` (create if absent; otherwise add cases)
+- Test: `analytics/config_loader_test.go` (**already exists** — append; do NOT overwrite)
 
 **Interfaces:**
 - Consumes: env vars `UMAMI_*`, `ONEBUSAWAY_BASE_URL`.
@@ -806,18 +806,11 @@ git commit -m "feat(umami): add provider HTTP emit with fire-and-forget POST"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `analytics/config_loader_test.go` (new file in package `analytics`):
+`analytics/config_loader_test.go` **already exists** (it contains `TestLoadConfigFromEnv`, `TestLoadPlausibleConfig`, `TestCreateManager`). Do NOT recreate it — that would delete those tests. **Append** the two functions below to the end of the file.
+
+The existing file imports `os`, `testing`, `time`, and `testify/assert`, but NOT `testify/require`. Add `"github.com/stretchr/testify/require"` to its existing import block (the appended code uses `require`):
 
 ```go
-package analytics
-
-import (
-	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
-
 func TestResolveUmamiHostname(t *testing.T) {
 	assert.Equal(t, "explicit.example.org", resolveUmamiHostname("explicit.example.org", "https://api.pugetsound.onebusaway.org"))
 	assert.Equal(t, "api.pugetsound.onebusaway.org", resolveUmamiHostname("", "https://api.pugetsound.onebusaway.org"))
@@ -876,6 +869,9 @@ Expected: FAIL (`loadUmamiConfig`/`resolveUmamiHostname` undefined).
 In `analytics/config_loader.go`, add `"net/url"` to the import block. Then add these functions at the end of the file:
 
 ```go
+// defaultUmamiHostname intentionally duplicates umami.DefaultHostname: the
+// analytics package configures the provider via a string map and does not import
+// the umami package. Keep both values in sync if either changes.
 const defaultUmamiHostname = "twilio.onebusaway.org"
 
 // resolveUmamiHostname picks the payload hostname: explicit override, else the
@@ -968,7 +964,7 @@ git commit -m "feat(umami): load provider config from environment"
 ### Task 6: Wire the provider into main.go
 
 **Files:**
-- Modify: `main.go` (import block; the provider-registration `for` loop, ~lines 86-136)
+- Modify: `main.go` (import block; the provider-registration `for` loop at ~lines 89-134 — insert the new block after the plausible `if` block closes at ~line 133, before the loop's closing brace at ~line 134)
 
 **Interfaces:**
 - Consumes: `umami.NewProvider`, `umami.DefaultConfig`, `analyticsManager.RegisterProvider`.
@@ -1096,7 +1092,7 @@ func waitForEvents(t *testing.T, mock *analytics.MockProvider, n int) []analytic
 
 func newTestVoiceHandler(t *testing.T) (*Handler, *analytics.Manager, *analytics.MockProvider) {
 	t.Helper()
-	locManager, err := localization.NewLocalizationManager([]string{"en-US"})
+	locManager, err := localization.NewManager("en-US")
 	require.NoError(t, err)
 
 	cfg := analytics.DefaultConfig()
@@ -1138,7 +1134,7 @@ func TestMenuActionEmitsMenuChoice(t *testing.T) {
 }
 ```
 
-Note: this test relies on `localization.NewLocalizationManager` and `analytics.MockProvider` (both exist). If `NewLocalizationManager`'s signature differs in this repo, adjust the call to match — verify with `grep -n "func NewLocalizationManager" localization/manager.go` before writing.
+Note: the real localization constructor is `localization.NewManager(supportedLanguagesStr string) (*LocalizationManager, error)` (`localization/manager.go:29`) — it takes a comma-separated string, not a slice. `analytics.MockProvider` exists in `analytics/mock_provider.go`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
