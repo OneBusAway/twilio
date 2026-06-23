@@ -252,6 +252,14 @@ Create a `.env` file or set environment variables:
 | `PLAUSIBLE_HTTP_TIMEOUT` | HTTP timeout for Plausible requests (seconds) | `10` | Optional |
 | `PLAUSIBLE_MAX_RETRIES` | Maximum retries for failed Plausible requests | `3` | Optional |
 | `PLAUSIBLE_RETRY_DELAY` | Delay between Plausible retries (seconds) | `1` | Optional |
+| **Umami Analytics Provider** | | | |
+| `UMAMI_ENABLED` | Enable the Umami analytics provider | `false` | Optional |
+| `UMAMI_URL` | Umami host; events POST to `<UMAMI_URL>/api/send` | - | Required if Umami enabled |
+| `UMAMI_WEBSITE_ID` | Umami website UUID | - | Required if Umami enabled |
+| `UMAMI_HOSTNAME` | `hostname` field in emitted events (default: host of `ONEBUSAWAY_BASE_URL`, else `twilio.onebusaway.org`) | - | Optional |
+| `UMAMI_HTTP_TIMEOUT` | Per-request timeout, Go duration (e.g. `5s`, `10s`) | `5s` | Optional |
+
+> **Note**: Analytics is API-driven (no JS tracker); the Umami provider POSTs events server-side with a browser-shaped User-Agent.
 
 ### Example .env file:
 

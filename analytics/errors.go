@@ -23,4 +23,6 @@ var (
 	ErrInvalidConfiguration = errors.New("invalid analytics configuration")
 	ErrMissingAPIKey        = errors.New("analytics API key is required")
 	ErrMissingDomain        = errors.New("analytics domain is required")
+	ErrMissingServerURL     = errors.New("analytics server URL is required")
+	ErrMissingWebsiteID     = errors.New("analytics website ID is required")
 )

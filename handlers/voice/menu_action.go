@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/twilio/twilio-go/twiml"
 
+	"oba-twilio/middleware"
 	"oba-twilio/models"
 )
 
@@ -20,6 +21,10 @@ func (h *Handler) HandleVoiceMenuAction(c *gin.Context) {
 	}
 
 	log.Printf("Received voice menu action from %s: %s", req.From, req.Digits)
+
+	if h.analyticsManager != nil {
+		middleware.TrackVoiceMenuChoice(c.Request.Context(), h.analyticsManager, req.From, h.analyticsHashSalt, req.Digits)
+	}
 
 	c.Header("Content-Type", "text/xml")
 

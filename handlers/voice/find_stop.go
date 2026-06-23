@@ -5,12 +5,14 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/twilio/twilio-go/twiml"
 
 	"oba-twilio/formatters"
 	"oba-twilio/handlers/common"
+	"oba-twilio/middleware"
 	"oba-twilio/models"
 	"oba-twilio/validation"
 )
@@ -123,7 +125,20 @@ func (h *Handler) resolveStopID(c *gin.Context, req models.TwilioVoiceRequest) (
 // respondForStopID looks up the stops matching stopID and responds: arrivals for
 // a single match, a disambiguation prompt for several, or an error otherwise.
 func (h *Handler) respondForStopID(c *gin.Context, req models.TwilioVoiceRequest, stopID string) {
+	startTime := time.Now()
 	matchingStops, err := h.OBAClient.FindAllMatchingStops(stopID)
+	latencyMS := time.Since(startTime).Milliseconds()
+
+	if h.analyticsManager != nil {
+		// A lookup with no matching stops is a user-facing failure, not a success.
+		success := err == nil && len(matchingStops) > 0
+		agencyName := ""
+		if len(matchingStops) > 0 {
+			agencyName = matchingStops[0].AgencyName
+		}
+		middleware.TrackStopLookup(c.Request.Context(), h.analyticsManager, req.From, stopID, agencyName, h.analyticsHashSalt, success, latencyMS)
+	}
+
 	if err != nil {
 		language := h.getLanguageFromRequest(c)
 		h.ErrorHandler.HandleVoiceError(c, err, language)

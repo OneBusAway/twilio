@@ -165,6 +165,26 @@ func TrackSMSRequest(ctx context.Context, manager AnalyticsManager, phoneNumber,
 	}()
 }
 
+// TrackVoiceMenuChoice tracks a voice menu (DTMF) selection.
+func TrackVoiceMenuChoice(ctx context.Context, manager AnalyticsManager, phoneNumber, salt, digits string) {
+	if manager == nil {
+		return
+	}
+
+	userID := analytics.HashPhoneNumber(phoneNumber, salt)
+	event := analytics.VoiceMenuChoiceEvent(userID, digits)
+
+	if requestID, ok := ctx.Value(RequestIDKey).(string); ok {
+		event.Properties["request_id"] = requestID
+	}
+
+	go func() {
+		trackCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = manager.TrackEvent(trackCtx, event)
+	}()
+}
+
 // TrackVoiceRequest tracks an incoming voice call.
 func TrackVoiceRequest(ctx context.Context, manager AnalyticsManager, phoneNumber, language, salt string) {
 	if manager == nil {

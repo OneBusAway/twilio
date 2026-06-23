@@ -96,6 +96,13 @@ func VoiceRequestEvent(hashedUserID, language string) Event {
 	return event
 }
 
+// VoiceMenuChoiceEvent creates an event for a voice menu (DTMF) selection.
+func VoiceMenuChoiceEvent(hashedUserID, digits string) Event {
+	event := NewEvent(EventVoiceMenuChoice, hashedUserID)
+	event.Properties[PropDTMFDigits] = digits
+	return event
+}
+
 // StopLookupEvent creates an event for stop lookup attempts.
 func StopLookupEvent(hashedUserID, stopID, agencyID string, success bool, latencyMS int64) Event {
 	eventName := EventStopLookupSuccess

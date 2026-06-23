@@ -149,7 +149,8 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 
 	// Track stop lookup
 	if h.analyticsManager != nil {
-		success := err == nil
+		// A lookup with no matching stops is a user-facing failure, not a success.
+		success := err == nil && len(matchingStops) > 0
 		agencyName := ""
 		if len(matchingStops) > 0 {
 			agencyName = matchingStops[0].AgencyName
