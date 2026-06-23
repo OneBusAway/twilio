@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -74,12 +74,15 @@ func TestTrackEventNeverBlocksOnSlowServer(t *testing.T) {
 	p, err := NewProvider(Config{ServerURL: srv.URL, WebsiteID: "web-uuid", HTTPTimeout: 100 * time.Millisecond})
 	require.NoError(t, err)
 
+	start := time.Now()
 	done := make(chan error, 1)
 	go func() { done <- p.TrackEvent(context.Background(), newTestEvent()) }()
 
 	select {
 	case err := <-done:
+		elapsed := time.Since(start)
 		assert.Error(t, err) // timed out -> error, but returned promptly
+		assert.Less(t, elapsed, 800*time.Millisecond)
 	case <-time.After(2 * time.Second):
 		t.Fatal("TrackEvent did not return within timeout")
 	}
@@ -93,18 +96,32 @@ func TestCloseIsIdempotentlyGuarded(t *testing.T) {
 	assert.ErrorIs(t, p.TrackEvent(context.Background(), newTestEvent()), analytics.ErrProviderClosed)
 }
 
-func TestServerDrainsRequestBody(t *testing.T) {
-	var ok int32
+// TestTrackEventReusesConnection verifies that TrackEvent fully drains and
+// closes the response body so that the underlying TCP connection is returned to
+// the keep-alive pool. If both calls share the same RemoteAddr (client port),
+// the connection was reused — which only happens when the response body is
+// properly drained and closed.
+func TestTrackEventReusesConnection(t *testing.T) {
+	var mu sync.Mutex
+	var addrs []string
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := io.ReadAll(r.Body); err == nil {
-			atomic.StoreInt32(&ok, 1)
-		}
+		mu.Lock()
+		addrs = append(addrs, r.RemoteAddr)
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"sessionId":"s"}`))
 	}))
 	defer srv.Close()
 
 	p, err := NewProvider(Config{ServerURL: srv.URL, WebsiteID: "web-uuid"})
 	require.NoError(t, err)
-	_ = p.TrackEvent(context.Background(), newTestEvent())
-	assert.Equal(t, int32(1), atomic.LoadInt32(&ok))
+
+	require.NoError(t, p.TrackEvent(context.Background(), newTestEvent()))
+	require.NoError(t, p.TrackEvent(context.Background(), newTestEvent()))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, addrs, 2, "expected exactly two requests")
+	assert.Equal(t, addrs[0], addrs[1], "both requests should reuse the same TCP connection (same RemoteAddr)")
 }

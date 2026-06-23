@@ -56,7 +56,7 @@ func (p *Provider) TrackEvent(ctx context.Context, event analytics.Event) error 
 	reqCtx, cancel := context.WithTimeout(ctx, p.config.HTTPTimeout)
 	defer cancel()
 
-	endpoint := strings.TrimRight(p.config.ServerURL, "/") + "/api/send"
+	endpoint := strings.TrimSuffix(p.config.ServerURL, "/") + "/api/send"
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create umami request: %w", err)
