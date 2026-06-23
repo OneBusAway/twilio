@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"oba-twilio/analytics"
+	"oba-twilio/privacy"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,10 +37,10 @@ type SMSHandler struct {
 	ErrorHandler        *common.ErrorHandler
 	arrivalFilterConfig common.ArrivalFilterConfig
 	analyticsManager    middleware.AnalyticsManager
-	analyticsHashSalt   string
+	phoneHasher         *privacy.Hasher
 }
 
-func NewSMSHandler(obaClient client.OneBusAwayClientInterface, locManager *localization.LocalizationManager) *SMSHandler {
+func NewSMSHandler(obaClient client.OneBusAwayClientInterface, locManager *localization.LocalizationManager, phoneHasher *privacy.Hasher) *SMSHandler {
 	return &SMSHandler{
 		OBAClient:           obaClient,
 		SessionStore:        common.NewSessionStore(),
@@ -51,6 +51,7 @@ func NewSMSHandler(obaClient client.OneBusAwayClientInterface, locManager *local
 			MaxPredictedEarlyMins: 15,
 			FallbackToUnfiltered:  true,
 		},
+		phoneHasher: phoneHasher,
 	}
 }
 
@@ -86,7 +87,7 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 	// Sanitize the message body
 	req.Body = validation.SanitizeUserInput(req.Body)
 
-	log.Printf("Received SMS from %s: %s", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), req.Body)
+	log.Printf("Received SMS from %s: %s", h.phoneHasher.HashForLogs(req.From), req.Body)
 
 	c.Header("Content-Type", "text/xml")
 
@@ -95,7 +96,8 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 
 	// Track SMS request
 	if h.analyticsManager != nil {
-		middleware.TrackSMSRequest(c.Request.Context(), h.analyticsManager, req.From, smsSession.Language, req.Body, h.analyticsHashSalt)
+		userID := h.phoneHasher.ConstructUserId(req.From)
+		middleware.TrackSMSRequest(c.Request.Context(), h.analyticsManager, userID, smsSession.Language, req.Body)
 	}
 
 	// Check for keywords first
@@ -110,7 +112,7 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 		session := h.SessionStore.GetDisambiguationSession(req.From)
 		if session != nil {
 			if err := validation.ValidateDisambiguationChoice(req.Body, len(session.StopOptions)); err != nil {
-				log.Printf("Invalid disambiguation choice from %s: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), err)
+				log.Printf("Invalid disambiguation choice from %s: %v", h.phoneHasher.HashForLogs(req.From), err)
 				errorMsg := h.LocalizationManager.GetString("sms.error.invalid_choice", h.getLanguageForUser(req.From), len(session.StopOptions))
 				twiml, _ := formatters.GenerateTwiMLSMS(errorMsg)
 				c.String(http.StatusOK, twiml)
@@ -140,7 +142,7 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 	smsSession.ArrivalHorizonShownMinutes = 0 // new stop query — show nearest slice from scratch
 	smsSession.LastQueryTime = time.Now().Unix()
 	if err := h.SessionStore.SetSMSSession(req.From, smsSession); err != nil {
-		log.Printf("Failed to set SMS session for %s: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), err)
+		log.Printf("Failed to set SMS session for %s: %v", h.phoneHasher.HashForLogs(req.From), err)
 	}
 
 	// Find all matching stops for the given ID
@@ -156,13 +158,15 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 		if len(matchingStops) > 0 {
 			agencyName = matchingStops[0].AgencyName
 		}
-		middleware.TrackStopLookup(c.Request.Context(), h.analyticsManager, req.From, stopID, agencyName, h.analyticsHashSalt, success, latencyMS)
+		userID := h.phoneHasher.ConstructUserId(req.From)
+		middleware.TrackStopLookup(c.Request.Context(), h.analyticsManager, userID, stopID, agencyName, success, latencyMS)
 	}
 
 	if err != nil {
 		// Track error
 		if h.analyticsManager != nil {
-			middleware.TrackError(c.Request.Context(), h.analyticsManager, req.From, "stop_lookup", err.Error(), h.analyticsHashSalt)
+			userID := h.phoneHasher.ConstructUserId(req.From)
+			middleware.TrackError(c.Request.Context(), h.analyticsManager, userID, "stop_lookup", err.Error())
 		}
 		h.ErrorHandler.HandleSMSError(c, err, language)
 		return
@@ -191,7 +195,8 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 		// Track disambiguation presented
 		if h.analyticsManager != nil {
 			sessionID := fmt.Sprintf("sms_%s_%d", req.From, time.Now().Unix())
-			middleware.TrackDisambiguationPresented(c.Request.Context(), h.analyticsManager, req.From, sessionID, h.analyticsHashSalt, len(matchingStops))
+			userID := h.phoneHasher.ConstructUserId(req.From)
+			middleware.TrackDisambiguationPresented(c.Request.Context(), h.analyticsManager, userID, sessionID, len(matchingStops))
 		}
 
 		twiml, _ := formatters.GenerateTwiMLSMS(disambiguationMsg)
@@ -224,12 +229,13 @@ func (h *SMSHandler) handleDisambiguationChoice(c *gin.Context, req models.Twili
 	selectedStop := session.StopOptions[choice-1]
 	h.SessionStore.ClearDisambiguationSession(req.From)
 
-	log.Printf("User %s selected stop %s: %s", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), selectedStop.FullStopID, selectedStop.DisplayText)
+	log.Printf("User %s selected stop %s: %s", h.phoneHasher.HashForLogs(req.From), selectedStop.FullStopID, selectedStop.DisplayText)
 
 	// Track disambiguation selection
 	if h.analyticsManager != nil {
 		sessionID := fmt.Sprintf("sms_%s_%d", req.From, time.Now().Unix())
-		middleware.TrackDisambiguationSelected(c.Request.Context(), h.analyticsManager, req.From, sessionID, h.analyticsHashSalt, choice, selectedStop.FullStopID)
+		userID := h.phoneHasher.ConstructUserId(req.From)
+		middleware.TrackDisambiguationSelected(c.Request.Context(), h.analyticsManager, userID, sessionID, choice, selectedStop.FullStopID)
 	}
 
 	// Get SMS session for this user to maintain consistency
@@ -285,7 +291,7 @@ func (h *SMSHandler) getAndFormatArrivalsWithStopNameAndSession(c *gin.Context, 
 	}
 	log.Printf(
 		"SMS pagination for %s: stop=%s window=%d total_arrivals=%d excluded=%d fallback=%t offset=%d page_size=%d returned=%d",
-		analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt),
+		h.phoneHasher.HashForLogs(phoneNumber),
 		fullStopID,
 		window,
 		len(arrivalsAll),
@@ -342,7 +348,7 @@ func (h *SMSHandler) getAndFormatArrivalsWithStopNameAndSession(c *gin.Context, 
 	newSession.ArrivalHorizonShownMinutes = offset + len(arrivals)
 	if err := h.SessionStore.SetSMSSession(phoneNumber, &newSession); err != nil {
 		// Log error but still send the response
-		log.Printf("Failed to set SMS session for %s: %v", analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt), err)
+		log.Printf("Failed to set SMS session for %s: %v", h.phoneHasher.HashForLogs(phoneNumber), err)
 	} else {
 		*session = newSession
 	}
@@ -420,7 +426,7 @@ func (h *SMSHandler) handleMoreRequest(c *gin.Context, req models.TwilioSMSReque
 	updatedSession.LastQueryTime = time.Now().Unix()
 	if err := h.SessionStore.SetSMSSession(req.From, &updatedSession); err != nil {
 		// Log error but continue to send response
-		log.Printf("Failed to set SMS session for %s: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), err)
+		log.Printf("Failed to set SMS session for %s: %v", h.phoneHasher.HashForLogs(req.From), err)
 	} else {
 		*session = updatedSession
 	}
@@ -453,7 +459,7 @@ func (h *SMSHandler) handleLanguageSwitching(c *gin.Context, req models.TwilioSM
 	if newLang, found := languageMap[message]; found && h.LocalizationManager.IsSupported(newLang) {
 		session.Language = newLang
 		if err := h.SessionStore.SetSMSSession(req.From, session); err != nil {
-			log.Printf("Failed to set SMS session for %s: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), err)
+			log.Printf("Failed to set SMS session for %s: %v", h.phoneHasher.HashForLogs(req.From), err)
 		}
 		switchedMsg := h.LocalizationManager.GetString("sms.language.switched", newLang)
 		twiml, _ := formatters.GenerateTwiMLSMS(switchedMsg)
@@ -502,7 +508,7 @@ func (h *SMSHandler) handleTimeQuery(c *gin.Context, req models.TwilioSMSRequest
 		updatedSession.LastQueryTime = time.Now().Unix()
 		if err := h.SessionStore.SetSMSSession(req.From, &updatedSession); err != nil {
 			// Log error but continue to send response
-			log.Printf("Failed to set SMS session for %s: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), err)
+			log.Printf("Failed to set SMS session for %s: %v", h.phoneHasher.HashForLogs(req.From), err)
 		} else {
 			*session = updatedSession
 		}
@@ -554,10 +560,9 @@ func (h *SMSHandler) getLanguageForUser(phoneNumber string) string {
 }
 
 // SetAnalyticsManager sets the analytics manager for the SMS handler
-func SetAnalyticsManager(handler interface{}, manager middleware.AnalyticsManager, hashSalt string) {
+func SetAnalyticsManager(handler interface{}, manager middleware.AnalyticsManager) {
 	switch h := handler.(type) {
 	case *SMSHandler:
 		h.analyticsManager = manager
-		h.analyticsHashSalt = hashSalt
 	}
 }

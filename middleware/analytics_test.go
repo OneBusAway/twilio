@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"oba-twilio/privacy"
 	"strings"
 	"testing"
 	"time"
@@ -35,9 +36,10 @@ func (m *mockAnalyticsManager) clear() {
 
 func TestNewAnalyticsMiddleware(t *testing.T) {
 	manager := &mockAnalyticsManager{}
+	phoneHasher := privacy.NewHasher("test-salt", "")
 	config := AnalyticsConfig{
-		Enabled:  true,
-		HashSalt: "test-salt",
+		Enabled:     true,
+		PhoneHasher: phoneHasher,
 	}
 
 	middleware := NewAnalyticsMiddleware(manager, config)
@@ -45,7 +47,6 @@ func TestNewAnalyticsMiddleware(t *testing.T) {
 	assert.NotNil(t, middleware)
 	assert.Equal(t, manager, middleware.manager)
 	assert.Equal(t, config, middleware.config)
-	assert.Equal(t, config.HashSalt, middleware.hashSalt)
 }
 
 func TestAnalyticsMiddleware_HandlerDisabled(t *testing.T) {
@@ -92,9 +93,10 @@ func TestAnalyticsMiddleware_HandlerNilManager(t *testing.T) {
 
 func TestAnalyticsMiddleware_HandlerEnabled(t *testing.T) {
 	manager := &mockAnalyticsManager{}
+	phoneHasher := privacy.NewHasher("test-salt", "")
 	config := AnalyticsConfig{
-		Enabled:  true,
-		HashSalt: "test-salt",
+		Enabled:     true,
+		PhoneHasher: phoneHasher,
 	}
 
 	middleware := NewAnalyticsMiddleware(manager, config)
@@ -195,8 +197,10 @@ func TestAnalyticsMiddleware_ExtractPhoneNumber(t *testing.T) {
 func TestTrackSMSRequest(t *testing.T) {
 	manager := &mockAnalyticsManager{}
 	ctx := context.WithValue(context.Background(), RequestIDKey, "test-request-123")
+	phoneHasher := privacy.NewHasher("test-salt", "")
+	userID := phoneHasher.ConstructUserId("+12065551234")
 
-	TrackSMSRequest(ctx, manager, "+12065551234", "es-US", "75403", "test-salt")
+	TrackSMSRequest(ctx, manager, userID, "es-US", "75403")
 
 	// Give time for goroutine to complete
 	time.Sleep(50 * time.Millisecond)
@@ -216,7 +220,9 @@ func TestTrackVoiceRequest(t *testing.T) {
 	manager := &mockAnalyticsManager{}
 	ctx := context.WithValue(context.Background(), RequestIDKey, "test-request-456")
 
-	TrackVoiceRequest(ctx, manager, "+12065551234", "fr-US", "test-salt")
+	phoneHasher := privacy.NewHasher("test-salt", "")
+	userID := phoneHasher.ConstructUserId("+12065551234")
+	TrackVoiceRequest(ctx, manager, userID, "fr-US")
 
 	// Give time for goroutine to complete
 	time.Sleep(50 * time.Millisecond)
@@ -234,9 +240,11 @@ func TestTrackVoiceRequest(t *testing.T) {
 func TestTrackStopLookup(t *testing.T) {
 	manager := &mockAnalyticsManager{}
 	ctx := context.Background()
+	phoneHasher := privacy.NewHasher("test-salt", "")
+	userID := phoneHasher.ConstructUserId("+12065551234")
 
 	// Test successful lookup
-	TrackStopLookup(ctx, manager, "+12065551234", "1_75403", "1", "test-salt", true, 150)
+	TrackStopLookup(ctx, manager, userID, "1_75403", "1", true, 150)
 
 	// Give time for goroutine to complete
 	time.Sleep(50 * time.Millisecond)
@@ -253,7 +261,7 @@ func TestTrackStopLookup(t *testing.T) {
 
 	// Test failed lookup
 	manager.clear()
-	TrackStopLookup(ctx, manager, "+12065551234", "invalid", "", "test-salt", false, 50)
+	TrackStopLookup(ctx, manager, userID, "invalid", "", false, 50)
 
 	// Give time for goroutine to complete
 	time.Sleep(50 * time.Millisecond)
@@ -268,8 +276,10 @@ func TestTrackStopLookup(t *testing.T) {
 func TestTrackError(t *testing.T) {
 	manager := &mockAnalyticsManager{}
 	ctx := context.Background()
+	phoneHasher := privacy.NewHasher("test-salt", "")
+	userID := phoneHasher.ConstructUserId("+12065551234")
 
-	TrackError(ctx, manager, "+12065551234", "api_error", "connection timeout", "test-salt")
+	TrackError(ctx, manager, userID, "api_error", "connection timeout")
 
 	// Give time for goroutine to complete
 	time.Sleep(50 * time.Millisecond)
@@ -287,8 +297,10 @@ func TestTrackError(t *testing.T) {
 func TestTrackDisambiguationPresented(t *testing.T) {
 	manager := &mockAnalyticsManager{}
 	ctx := context.Background()
+	phoneHasher := privacy.NewHasher("test-salt", "")
+	userID := phoneHasher.ConstructUserId("+12065551234")
 
-	TrackDisambiguationPresented(ctx, manager, "+12065551234", "session-123", "test-salt", 3)
+	TrackDisambiguationPresented(ctx, manager, userID, "session-123", 3)
 
 	// Give time for goroutine to complete
 	time.Sleep(50 * time.Millisecond)
@@ -306,8 +318,10 @@ func TestTrackDisambiguationPresented(t *testing.T) {
 func TestTrackDisambiguationSelected(t *testing.T) {
 	manager := &mockAnalyticsManager{}
 	ctx := context.Background()
+	phoneHasher := privacy.NewHasher("test-salt", "")
+	userID := phoneHasher.ConstructUserId("+12065551234")
 
-	TrackDisambiguationSelected(ctx, manager, "+12065551234", "session-123", "test-salt", 2, "1_75403")
+	TrackDisambiguationSelected(ctx, manager, userID, "session-123", 2, "1_75403")
 
 	// Give time for goroutine to complete
 	time.Sleep(50 * time.Millisecond)
@@ -327,12 +341,15 @@ func TestTrackFunctionsWithNilManager(t *testing.T) {
 	ctx := context.Background()
 
 	// All functions should handle nil manager gracefully
-	TrackSMSRequest(ctx, nil, "+12065551234", "en-US", "75403", "salt")
-	TrackVoiceRequest(ctx, nil, "+12065551234", "en-US", "salt")
-	TrackStopLookup(ctx, nil, "+12065551234", "75403", "1", "salt", true, 100)
-	TrackError(ctx, nil, "+12065551234", "error", "message", "salt")
-	TrackDisambiguationPresented(ctx, nil, "+12065551234", "session", "salt", 3)
-	TrackDisambiguationSelected(ctx, nil, "+12065551234", "session", "salt", 1, "stop")
+	phoneHasher := privacy.NewHasher("test-salt", "")
+	userID := phoneHasher.ConstructUserId("+12065551234")
+
+	TrackSMSRequest(ctx, nil, userID, "en-US", "75403")
+	TrackVoiceRequest(ctx, nil, userID, "en-US")
+	TrackStopLookup(ctx, nil, userID, "75403", "1", true, 100)
+	TrackError(ctx, nil, userID, "error", "message")
+	TrackDisambiguationPresented(ctx, nil, userID, "session", 3)
+	TrackDisambiguationSelected(ctx, nil, userID, "session", 1, "stop")
 
 	// Should not panic
 }

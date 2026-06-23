@@ -224,40 +224,42 @@ curl -X POST \
 
 Create a `.env` file or set environment variables:
 
-| Variable | Description | Default Value | Required/Optional |
-|----------|-------------|---------------|-------------------|
-| **Server Configuration** | | | |
-| `PORT` | Server port number | `8080` | Optional |
-| **OneBusAway API Configuration** | | | |
-| `ONEBUSAWAY_API_KEY` | API key for OneBusAway server (no default; `test` is the public demo key for the Puget Sound server and works for local development) | - | Required |
-| `ONEBUSAWAY_BASE_URL` | OneBusAway API base URL | `https://api.pugetsound.onebusaway.org` | Optional |
-| **Localization** | | | |
-| `SUPPORTED_LANGUAGES` | Comma-separated list of supported language codes | `en-US` | Optional |
-| **Twilio Configuration** | | | |
-| `TWILIO_ACCOUNT_SID` | Twilio account SID (for outbound features) | - | Optional |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token (for outbound features) | - | Optional |
-| **Analytics Configuration** | | | |
-| `ANALYTICS_ENABLED` | Enable/disable analytics collection | `false` | Optional |
-| `ANALYTICS_HASH_SALT` | Salt for hashing sensitive analytics data (32+ char random string) | - | Required if analytics enabled |
-| `ANALYTICS_WORKER_COUNT` | Number of analytics worker threads | `4` | Optional |
-| `ANALYTICS_QUEUE_SIZE` | Size of analytics event queue | `1000` | Optional |
-| `ANALYTICS_SHUTDOWN_TIMEOUT` | Timeout for analytics shutdown (seconds) | `30` | Optional |
-| **Plausible Analytics Provider** | | | |
-| `PLAUSIBLE_ENABLED` | Enable/disable Plausible analytics provider | `false` | Optional |
-| `PLAUSIBLE_DOMAIN` | Domain for Plausible analytics tracking | - | Required if Plausible enabled |
-| `PLAUSIBLE_API_URL` | Custom Plausible API URL | `https://plausible.io` | Optional |
-| `PLAUSIBLE_API_KEY` | Plausible API key (for custom domains) | - | Optional |
-| `PLAUSIBLE_BATCH_SIZE` | Batch size for Plausible events | `50` | Optional |
-| `PLAUSIBLE_FLUSH_INTERVAL` | Flush interval for Plausible events (seconds) | `30` | Optional |
-| `PLAUSIBLE_HTTP_TIMEOUT` | HTTP timeout for Plausible requests (seconds) | `10` | Optional |
-| `PLAUSIBLE_MAX_RETRIES` | Maximum retries for failed Plausible requests | `3` | Optional |
-| `PLAUSIBLE_RETRY_DELAY` | Delay between Plausible retries (seconds) | `1` | Optional |
-| **Umami Analytics Provider** | | | |
-| `UMAMI_ENABLED` | Enable the Umami analytics provider | `false` | Optional |
-| `UMAMI_URL` | Umami host; events POST to `<UMAMI_URL>/api/send` | - | Required if Umami enabled |
-| `UMAMI_WEBSITE_ID` | Umami website UUID | - | Required if Umami enabled |
-| `UMAMI_HOSTNAME` | `hostname` field in emitted events (default: host of `ONEBUSAWAY_BASE_URL`, else `twilio.onebusaway.org`) | - | Optional |
-| `UMAMI_HTTP_TIMEOUT` | Per-request timeout, Go duration (e.g. `5s`, `10s`) | `5s` | Optional |
+| Variable                            | Description                                                                                                            | Default Value                           | Required/Optional             |
+|-------------------------------------|------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|-------------------------------|
+| **Server Configuration**            |                                                                                                                        |                                         |                               |
+| `PORT`                              | Server port number                                                                                                     | `8080`                                  | Optional                      |
+| **OneBusAway API Configuration**    |                                                                                                                        |                                         |                               |
+| `ONEBUSAWAY_API_KEY`                | API key for OneBusAway server (no default; `test` is the public demo key for the Puget Sound server and works for local development) | -                                       | Required                      |
+| `ONEBUSAWAY_BASE_URL`               | OneBusAway API base URL                                                                                                | `https://api.pugetsound.onebusaway.org` | Optional                      |
+| **Localization**                    |                                                                                                                        |                                         |                               |
+| `SUPPORTED_LANGUAGES`               | Comma-separated list of supported language codes                                                                       | `en-US`                                 | Optional                      |
+| **Twilio Configuration**            |                                                                                                                        |                                         |                               |
+| `TWILIO_ACCOUNT_SID`                | Twilio account SID (for outbound features)                                                                             | -                                       | Optional                      |
+| `TWILIO_AUTH_TOKEN`                 | Twilio auth token (for outbound features)                                                                              | -                                       | Optional                      |
+| **Salts Configuration for hashing** |                                                                                                                        |                                         |                               |
+| `ANALYTICS_HASH_SALT`               | Salt for hashing sensitive analytics data (32+ char random string)                                                     | -                                       | Required if analytics enabled |
+|`PHONE_LOGS_SALT`| Salt used when hashing phone numbers before they are written to logs                                                   | -                                       | Optional                      |
+| **Analytics Configuration**         |                                                                                                                        |                                         |                               |
+| `ANALYTICS_ENABLED`                 | Enable/disable analytics collection                                                                                    | `false`                                 | Optional                      |
+| `ANALYTICS_WORKER_COUNT`            | Number of analytics worker threads                                                                                     | `4`                                     | Optional                      |
+| `ANALYTICS_QUEUE_SIZE`              | Size of analytics event queue                                                                                          | `1000`                                  | Optional                      |
+| `ANALYTICS_SHUTDOWN_TIMEOUT`        | Timeout for analytics shutdown (seconds)                                                                               | `30`                                    | Optional                      |
+| **Plausible Analytics Provider**    |                                                                                                                        |                                         |                               |
+| `PLAUSIBLE_ENABLED`                 | Enable/disable Plausible analytics provider                                                                            | `false`                                 | Optional                      |
+| `PLAUSIBLE_DOMAIN`                  | Domain for Plausible analytics tracking                                                                                | -                                       | Required if Plausible enabled |
+| `PLAUSIBLE_API_URL`                 | Custom Plausible API URL                                                                                               | `https://plausible.io`                  | Optional                      |
+| `PLAUSIBLE_API_KEY`                 | Plausible API key (for custom domains)                                                                                 | -                                       | Optional                      |
+| `PLAUSIBLE_BATCH_SIZE`              | Batch size for Plausible events                                                                                        | `50`                                    | Optional                      |
+| `PLAUSIBLE_FLUSH_INTERVAL`          | Flush interval for Plausible events (seconds)                                                                          | `30`                                    | Optional                      |
+| `PLAUSIBLE_HTTP_TIMEOUT`            | HTTP timeout for Plausible requests (seconds)                                                                          | `10`                                    | Optional                      |
+| `PLAUSIBLE_MAX_RETRIES`             | Maximum retries for failed Plausible requests                                                                          | `3`                                     | Optional                      |
+| `PLAUSIBLE_RETRY_DELAY`             | Delay between Plausible retries (seconds)                                                                              | `1`                                     | Optional                      |
+| **Umami Analytics Provider**        |                                                                                                                        |                                         |                               |
+| `UMAMI_ENABLED`                     | Enable the Umami analytics provider                                                                                    | `false`                                 | Optional                      |
+| `UMAMI_URL`                         | Umami host; events POST to `<UMAMI_URL>/api/send`                                                                      | -                                       | Required if Umami enabled     |
+| `UMAMI_WEBSITE_ID`                  | Umami website UUID                                                                                                     | -                                       | Required if Umami enabled     |
+| `UMAMI_HOSTNAME`                    | `hostname` field in emitted events (default: host of `ONEBUSAWAY_BASE_URL`, else `twilio.onebusaway.org`)              | -                                       | Optional                      |
+| `UMAMI_HTTP_TIMEOUT`                | Per-request timeout, Go duration (e.g. `5s`, `10s`)                                                                    | `5s`                                    | Optional                      |
 
 > **Note**: Analytics is API-driven (no JS tracker); the Umami provider POSTs events server-side with a browser-shaped User-Agent.
 
@@ -286,6 +288,8 @@ ANALYTICS_ENABLED=true
 # - pwgen -s 32 1
 ANALYTICS_HASH_SALT=kJ8Q2m5bC9tL3nP7sR4wX6aY1dF0eG2h
 
+PHONE_LOGS_SALT=8b7f4b73b1178857cafa12695b7dc4b9
+
 # Plausible Analytics (optional)
 PLAUSIBLE_ENABLED=true
 PLAUSIBLE_DOMAIN=your-domain.com
@@ -293,7 +297,7 @@ PLAUSIBLE_DOMAIN=your-domain.com
 
 ### Creating a Secure Hash Salt
 
-The `ANALYTICS_HASH_SALT` is used to anonymize sensitive data like phone numbers before storing them in analytics. To generate a secure salt:
+The `ANALYTICS_HASH_SALT` and `PHONE_LOGS_SALT` is used to anonymize sensitive data like phone numbers before storing them in analytics or logging them. To generate a secure salt:
 
 **Option 1: Using OpenSSL (recommended)**
 ```bash

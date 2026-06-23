@@ -33,9 +33,11 @@ The package defines several standard event types:
 ## Usage
 
 ```go
+// Create a Hasher
+h := privacy.NewHasher(analyticsSalt,logSalt)
 // Create an event
 event := analytics.SMSRequestEvent(
-    analytics.HashPhoneNumber(phoneNumber, salt),
+    h.ConstructUserId(phoneNumber),
     "en-US",
     "75403",
 )

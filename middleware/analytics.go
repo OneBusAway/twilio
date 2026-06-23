@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"context"
+	"oba-twilio/privacy"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,9 +21,8 @@ const (
 
 // AnalyticsMiddleware provides analytics tracking for HTTP requests.
 type AnalyticsMiddleware struct {
-	manager  AnalyticsManager
-	config   AnalyticsConfig
-	hashSalt string
+	manager AnalyticsManager
+	config  AnalyticsConfig
 }
 
 // AnalyticsManager defines the interface for analytics management.
@@ -32,16 +32,15 @@ type AnalyticsManager interface {
 
 // AnalyticsConfig holds configuration for analytics middleware.
 type AnalyticsConfig struct {
-	Enabled  bool
-	HashSalt string
+	Enabled     bool
+	PhoneHasher *privacy.Hasher
 }
 
 // NewAnalyticsMiddleware creates a new analytics middleware.
 func NewAnalyticsMiddleware(manager AnalyticsManager, config AnalyticsConfig) *AnalyticsMiddleware {
 	return &AnalyticsMiddleware{
-		manager:  manager,
-		config:   config,
-		hashSalt: config.HashSalt,
+		manager: manager,
+		config:  config,
 	}
 }
 
@@ -91,7 +90,7 @@ func (am *AnalyticsMiddleware) trackRequestCompletion(c *gin.Context, start time
 	phoneNumber := am.extractPhoneNumber(c)
 	userID := ""
 	if phoneNumber != "" {
-		userID = analytics.HashPhoneNumber(phoneNumber, am.hashSalt)
+		userID = am.config.PhoneHasher.ConstructUserId(phoneNumber)
 	}
 
 	// Create request completion event
@@ -145,12 +144,11 @@ func generateRequestID() string {
 // Helper functions for handlers to track specific events
 
 // TrackSMSRequest tracks an incoming SMS request.
-func TrackSMSRequest(ctx context.Context, manager AnalyticsManager, phoneNumber, language, query, salt string) {
+func TrackSMSRequest(ctx context.Context, manager AnalyticsManager, userID, language, query string) {
 	if manager == nil {
 		return
 	}
 
-	userID := analytics.HashPhoneNumber(phoneNumber, salt)
 	event := analytics.SMSRequestEvent(userID, language, query)
 
 	// Add request ID if available
@@ -166,12 +164,11 @@ func TrackSMSRequest(ctx context.Context, manager AnalyticsManager, phoneNumber,
 }
 
 // TrackVoiceMenuChoice tracks a voice menu (DTMF) selection.
-func TrackVoiceMenuChoice(ctx context.Context, manager AnalyticsManager, phoneNumber, salt, digits string) {
+func TrackVoiceMenuChoice(ctx context.Context, manager AnalyticsManager, userID, digits string) {
 	if manager == nil {
 		return
 	}
 
-	userID := analytics.HashPhoneNumber(phoneNumber, salt)
 	event := analytics.VoiceMenuChoiceEvent(userID, digits)
 
 	if requestID, ok := ctx.Value(RequestIDKey).(string); ok {
@@ -186,12 +183,11 @@ func TrackVoiceMenuChoice(ctx context.Context, manager AnalyticsManager, phoneNu
 }
 
 // TrackVoiceRequest tracks an incoming voice call.
-func TrackVoiceRequest(ctx context.Context, manager AnalyticsManager, phoneNumber, language, salt string) {
+func TrackVoiceRequest(ctx context.Context, manager AnalyticsManager, userID, language string) {
 	if manager == nil {
 		return
 	}
 
-	userID := analytics.HashPhoneNumber(phoneNumber, salt)
 	event := analytics.VoiceRequestEvent(userID, language)
 
 	// Add request ID if available
@@ -207,12 +203,11 @@ func TrackVoiceRequest(ctx context.Context, manager AnalyticsManager, phoneNumbe
 }
 
 // TrackStopLookup tracks a stop lookup attempt.
-func TrackStopLookup(ctx context.Context, manager AnalyticsManager, phoneNumber, stopID, agencyID, salt string, success bool, latencyMS int64) {
+func TrackStopLookup(ctx context.Context, manager AnalyticsManager, userID, stopID, agencyID string, success bool, latencyMS int64) {
 	if manager == nil {
 		return
 	}
 
-	userID := analytics.HashPhoneNumber(phoneNumber, salt)
 	event := analytics.StopLookupEvent(userID, stopID, agencyID, success, latencyMS)
 
 	// Add request ID if available
@@ -228,12 +223,11 @@ func TrackStopLookup(ctx context.Context, manager AnalyticsManager, phoneNumber,
 }
 
 // TrackError tracks an error occurrence.
-func TrackError(ctx context.Context, manager AnalyticsManager, phoneNumber, errorType, errorMessage, salt string) {
+func TrackError(ctx context.Context, manager AnalyticsManager, userID, errorType, errorMessage string) {
 	if manager == nil {
 		return
 	}
 
-	userID := analytics.HashPhoneNumber(phoneNumber, salt)
 	event := analytics.ErrorEvent(userID, errorType, errorMessage)
 
 	// Add request ID if available
@@ -249,12 +243,11 @@ func TrackError(ctx context.Context, manager AnalyticsManager, phoneNumber, erro
 }
 
 // TrackDisambiguationPresented tracks when multiple stop choices are shown.
-func TrackDisambiguationPresented(ctx context.Context, manager AnalyticsManager, phoneNumber, sessionID, salt string, choiceCount int) {
+func TrackDisambiguationPresented(ctx context.Context, manager AnalyticsManager, userID, sessionID string, choiceCount int) {
 	if manager == nil {
 		return
 	}
 
-	userID := analytics.HashPhoneNumber(phoneNumber, salt)
 	event := analytics.DisambiguationPresentedEvent(userID, sessionID, choiceCount)
 
 	// Add request ID if available
@@ -270,12 +263,11 @@ func TrackDisambiguationPresented(ctx context.Context, manager AnalyticsManager,
 }
 
 // TrackDisambiguationSelected tracks when a user selects from multiple stops.
-func TrackDisambiguationSelected(ctx context.Context, manager AnalyticsManager, phoneNumber, sessionID, salt string, choiceIndex int, stopID string) {
+func TrackDisambiguationSelected(ctx context.Context, manager AnalyticsManager, userID, sessionID string, choiceIndex int, stopID string) {
 	if manager == nil {
 		return
 	}
 
-	userID := analytics.HashPhoneNumber(phoneNumber, salt)
 	event := analytics.DisambiguationSelectedEvent(userID, sessionID, choiceIndex, stopID)
 
 	// Add request ID if available

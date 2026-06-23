@@ -1,8 +1,6 @@
 package analytics
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"time"
 
 	"github.com/google/uuid"
@@ -68,17 +66,6 @@ func NewEventWithSession(name string, userID string, sessionID string) Event {
 	event := NewEvent(name, userID)
 	event.SessionID = sessionID
 	return event
-}
-
-// HashPhoneNumber creates a privacy-preserving hash of a phone number.
-// It uses SHA256 with a salt to prevent rainbow table attacks.
-func HashPhoneNumber(phoneNumber string, salt string) string {
-	if phoneNumber == "" {
-		return ""
-	}
-	h := sha256.New()
-	h.Write([]byte(phoneNumber + salt))
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 // SMSRequestEvent creates an event for incoming SMS requests.
