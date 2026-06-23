@@ -2,9 +2,11 @@ package voice
 
 import (
 	"fmt"
-	"github.com/twilio/twilio-go/twiml"
 	"log/slog"
 	"net/http"
+	"oba-twilio/analytics"
+
+	"github.com/twilio/twilio-go/twiml"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,7 +20,7 @@ func (h *Handler) HandleVoiceStart(c *gin.Context) {
 
 	language := h.getLanguageFromRequest(c)
 
-	slog.Info("Received voice call", "from", req.From, "callSid", req.CallSid)
+	slog.Info("Received voice call", "from", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), "callSid", req.CallSid)
 
 	h.renderMainMenuWithLanguage(c, language)
 }
