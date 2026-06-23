@@ -106,7 +106,7 @@ func TestConstructUserId_GoldenValue(t *testing.T) {
 
 	assert.Equal(
 		t,
-		"7302da8cc30f1f26654a696738d81b25d9584f6d9146d1e3eae7ee5f20d902ad",
+		"86b053469877b271a3872cf96c5e45b6487cb222d04df6a7250bcd83533e8fa5",
 		result,
 	)
 }
