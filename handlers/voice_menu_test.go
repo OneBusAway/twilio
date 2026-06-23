@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"oba-twilio/privacy"
 	"strings"
 	"testing"
 	"time"
@@ -117,7 +118,7 @@ func setupVoiceMenuTestRouter() (*gin.Engine, *MockOneBusAwayClientVoiceMenu, *V
 
 	mockClient := &MockOneBusAwayClientVoiceMenu{}
 	locManager := localization.NewTestManager()
-	voiceHandler := NewVoiceHandler(mockClient, locManager)
+	voiceHandler := NewVoiceHandler(mockClient, locManager, privacy.NewHasher("", ""))
 
 	r := gin.New()
 	r.POST("/voice", voiceHandler.HandleVoiceStart)
@@ -734,7 +735,7 @@ func TestSessionStore_VoiceSessionTimeout(t *testing.T) {
 func TestVoiceHandler_MenuActionWithQueryParameter(t *testing.T) {
 	mockClient := &MockOneBusAwayClientVoiceMenu{}
 	locManager := localization.NewTestManager()
-	voiceHandler := NewVoiceHandler(mockClient, locManager)
+	voiceHandler := NewVoiceHandler(mockClient, locManager, privacy.NewHasher("", ""))
 	defer voiceHandler.Close()
 
 	// Set up initial session
@@ -791,7 +792,7 @@ func TestVoiceHandler_MenuActionWithQueryParameter(t *testing.T) {
 func TestVoiceHandler_MenuActionMissingQueryParameter(t *testing.T) {
 	mockClient := &MockOneBusAwayClientVoiceMenu{}
 	locManager := localization.NewTestManager()
-	voiceHandler := NewVoiceHandler(mockClient, locManager)
+	voiceHandler := NewVoiceHandler(mockClient, locManager, privacy.NewHasher("", ""))
 	defer voiceHandler.Close()
 
 	// Set up initial session
@@ -841,7 +842,7 @@ func TestVoiceHandler_StopNameRetrievalInResponse(t *testing.T) {
 
 	mockClient := new(MockOneBusAwayClientVoiceMenu)
 	lm := localization.NewTestManager()
-	voiceHandler := NewVoiceHandler(mockClient, lm)
+	voiceHandler := NewVoiceHandler(mockClient, lm, privacy.NewHasher("", ""))
 
 	r.POST("/voice/find_stop", voiceHandler.HandleFindStop)
 
@@ -937,7 +938,7 @@ func TestVoiceHandler_StopNameRetrievalFailure(t *testing.T) {
 
 	mockClient := new(MockOneBusAwayClientVoiceMenu)
 	lm := localization.NewTestManager()
-	voiceHandler := NewVoiceHandler(mockClient, lm)
+	voiceHandler := NewVoiceHandler(mockClient, lm, privacy.NewHasher("", ""))
 
 	r.POST("/voice/find_stop", voiceHandler.HandleFindStop)
 

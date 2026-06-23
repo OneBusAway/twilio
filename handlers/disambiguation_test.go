@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"oba-twilio/privacy"
 	"strings"
 	"testing"
 
@@ -115,7 +116,7 @@ func setupDisambiguationTestRouter() (*gin.Engine, *MockOneBusAwayClientDisambig
 
 	mockClient := &MockOneBusAwayClientDisambiguation{}
 	locManager := localization.NewTestManager()
-	smsHandler := NewSMSHandler(mockClient, locManager)
+	smsHandler := NewSMSHandler(mockClient, locManager, privacy.NewHasher("", ""))
 
 	r := gin.New()
 	r.POST("/sms", smsHandler.HandleSMS)

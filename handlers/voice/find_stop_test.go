@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"oba-twilio/privacy"
 	"strings"
 	"testing"
 
@@ -89,7 +90,7 @@ func expectSingleStopArrivals(mockClient *mockOBAClient, digits, fullStopID, rou
 func setupFindStopHandler() (*gin.Engine, *mockOBAClient, *Handler) {
 	gin.SetMode(gin.TestMode)
 	mockClient := &mockOBAClient{}
-	h := NewHandler(mockClient, localization.NewTestManager())
+	h := NewHandler(mockClient, localization.NewTestManager(), privacy.NewHasher("", ""))
 
 	r := gin.New()
 	r.POST("/voice/find_stop", h.HandleFindStop)
@@ -290,7 +291,7 @@ func TestHandleFindStop_SingleDigitWithoutSessionTreatedAsStopID(t *testing.T) {
 }
 
 func TestParseDisambiguationChoice(t *testing.T) {
-	h := NewHandler(&mockOBAClient{}, localization.NewTestManager())
+	h := NewHandler(&mockOBAClient{}, localization.NewTestManager(), privacy.NewHasher("", ""))
 
 	assert.Equal(t, 0, h.parseDisambiguationChoice(""))
 	assert.Equal(t, 0, h.parseDisambiguationChoice("12"))
@@ -302,7 +303,7 @@ func TestParseDisambiguationChoice(t *testing.T) {
 
 func TestHandleVoiceDisambiguationChoice_NoSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(&mockOBAClient{}, localization.NewTestManager())
+	h := NewHandler(&mockOBAClient{}, localization.NewTestManager(), privacy.NewHasher("", ""))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -316,7 +317,7 @@ func TestHandleVoiceDisambiguationChoice_NoSession(t *testing.T) {
 func TestGetAndFormatVoiceArrivals_LookupError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mockClient := &mockOBAClient{}
-	h := NewHandler(mockClient, localization.NewTestManager())
+	h := NewHandler(mockClient, localization.NewTestManager(), privacy.NewHasher("", ""))
 
 	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_12345", 30).Return(nil, fmt.Errorf("boom"))
 

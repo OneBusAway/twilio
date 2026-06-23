@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"oba-twilio/privacy"
 	"strings"
 	"testing"
 	"time"
@@ -42,8 +43,10 @@ func newTestVoiceHandler(t *testing.T) (*Handler, *analytics.Manager, *analytics
 	mock := analytics.NewMockProvider()
 	require.NoError(t, mgr.RegisterProvider("mock", mock))
 
-	h := NewHandler(nil, locManager)
-	h.SetAnalytics(mgr, "test-salt")
+	phoneHasher := privacy.NewHasher(cfg.HashSalt, "")
+
+	h := NewHandler(nil, locManager, phoneHasher)
+	h.SetAnalytics(mgr)
 	return h, mgr, mock
 }
 

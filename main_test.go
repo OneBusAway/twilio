@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"oba-twilio/privacy"
 	"os"
 	"strings"
 	"testing"
@@ -118,8 +119,8 @@ func setupTestRouter() (*gin.Engine, *MockOneBusAwayClient) {
 
 	mockClient := &MockOneBusAwayClient{}
 	locManager := localization.NewTestManager()
-	smsHandler := handlers.NewSMSHandler(mockClient, locManager)
-	voiceHandler := handlers.NewVoiceHandler(mockClient, locManager)
+	smsHandler := handlers.NewSMSHandler(mockClient, locManager, privacy.NewHasher("", ""))
+	voiceHandler := handlers.NewVoiceHandler(mockClient, locManager, privacy.NewHasher("", ""))
 
 	r := gin.New()
 	r.POST("/sms", smsHandler.HandleSMS)

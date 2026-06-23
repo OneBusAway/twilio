@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"oba-twilio/privacy"
 	"os"
 	"os/signal"
 	"strconv"
@@ -82,6 +83,7 @@ func main() {
 		analyticsConfig = analytics.DefaultConfig()
 	}
 
+	phoneHasher := privacy.NewHasher(analyticsConfig.HashSalt, os.Getenv("PHONE_LOGS_SALT"))
 	// Create analytics manager
 	analyticsManager := analytics.NewManager(analyticsConfig)
 
@@ -191,12 +193,12 @@ func main() {
 	sessionStore := common.NewImprovedSessionStore()
 	defer sessionStore.Close()
 
-	smsHandler := handlers.NewSMSHandler(obaClient, locManager)
-	voiceHandler := handlers.NewVoiceHandler(obaClient, locManager)
+	smsHandler := handlers.NewSMSHandler(obaClient, locManager, phoneHasher)
+	voiceHandler := handlers.NewVoiceHandler(obaClient, locManager, phoneHasher)
 
 	// Pass analytics manager to handlers
-	handlers.SetAnalyticsManager(smsHandler, analyticsManager, analyticsConfig.HashSalt)
-	voiceHandler.SetAnalytics(analyticsManager, analyticsConfig.HashSalt)
+	handlers.SetAnalyticsManager(smsHandler, analyticsManager)
+	voiceHandler.SetAnalytics(analyticsManager)
 
 	arrivalFilterEnabled := parseEnvBool("ARRIVAL_FILTER_ENABLED", false)
 	arrivalFilterFallback := parseEnvBool("ARRIVAL_FILTER_FALLBACK_TO_UNFILTERED", true)
@@ -240,8 +242,8 @@ func main() {
 
 	// Add analytics middleware
 	r.Use(middleware.NewAnalyticsMiddleware(analyticsManager, middleware.AnalyticsConfig{
-		Enabled:  analyticsConfig.Enabled,
-		HashSalt: analyticsConfig.HashSalt,
+		Enabled:     analyticsConfig.Enabled,
+		PhoneHasher: phoneHasher,
 	}).Handler())
 
 	// Add health check middleware

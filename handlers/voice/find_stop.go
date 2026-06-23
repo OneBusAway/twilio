@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"oba-twilio/analytics"
 	"strconv"
 	"time"
 
@@ -60,12 +59,12 @@ func (h *Handler) bindFindStopRequest(c *gin.Context) (models.TwilioVoiceRequest
 	// A malformed call SID is logged but not fatal: the call can still proceed.
 	if req.CallSid != "" {
 		if err := validation.ValidateTwilioCallSid(req.CallSid); err != nil {
-			log.Printf("Invalid call SID from %s: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), err)
+			log.Printf("Invalid call SID from %s: %v", h.phoneHasher.HashForLogs(req.From), err)
 		}
 	}
 
 	req.Digits = validation.SanitizeUserInput(req.Digits)
-	log.Printf("Received voice input from %s: %s", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), req.Digits)
+	log.Printf("Received voice input from %s: %s", h.phoneHasher.HashForLogs(req.From), req.Digits)
 
 	return req, true
 }
@@ -87,7 +86,7 @@ func (h *Handler) tryHandleDisambiguationChoice(c *gin.Context, req models.Twili
 	maxChoices := clampChoiceCount(len(session.StopOptions))
 
 	if err := validation.ValidateDisambiguationChoice(req.Digits, maxChoices); err != nil {
-		log.Printf("Invalid disambiguation choice from %s: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), err)
+		log.Printf("Invalid disambiguation choice from %s: %v", h.phoneHasher.HashForLogs(req.From), err)
 		language := h.getLanguageFromRequest(c)
 		errorMsg := h.LocalizationManager.GetString("voice.error.invalid_choice", language, maxChoices)
 		h.respondVoiceSay(c, language, errorMsg)
@@ -113,7 +112,7 @@ func (h *Handler) resolveStopID(c *gin.Context, req models.TwilioVoiceRequest) (
 	}
 
 	if err := validation.ValidateStopID(stopID); err != nil {
-		log.Printf("Invalid stop ID from %s: %s, error: %v", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), stopID, err)
+		log.Printf("Invalid stop ID from %s: %s, error: %v", h.phoneHasher.HashForLogs(req.From), stopID, err)
 		language := h.getLanguageFromRequest(c)
 		errorMsg := h.LocalizationManager.GetString("voice.error.invalid_stop_id", language)
 		h.respondVoiceSay(c, language, errorMsg)
@@ -137,7 +136,8 @@ func (h *Handler) respondForStopID(c *gin.Context, req models.TwilioVoiceRequest
 		if len(matchingStops) > 0 {
 			agencyName = matchingStops[0].AgencyName
 		}
-		middleware.TrackStopLookup(c.Request.Context(), h.analyticsManager, req.From, stopID, agencyName, h.analyticsHashSalt, success, latencyMS)
+		userID := h.phoneHasher.ConstructUserId(req.From)
+		middleware.TrackStopLookup(c.Request.Context(), h.analyticsManager, userID, stopID, agencyName, success, latencyMS)
 	}
 
 	if err != nil {
@@ -275,7 +275,7 @@ func (h *Handler) handleVoiceDisambiguationChoice(c *gin.Context, req models.Twi
 	selectedStop := session.StopOptions[choice-1]
 	h.SessionStore.ClearDisambiguationSession(req.From)
 
-	log.Printf("User %s selected stop %s: %s", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), selectedStop.FullStopID, selectedStop.DisplayText)
+	log.Printf("User %s selected stop %s: %s", h.phoneHasher.HashForLogs(req.From), selectedStop.FullStopID, selectedStop.DisplayText)
 
 	h.getAndFormatVoiceArrivalsWithSession(c, req.From, selectedStop.FullStopID, 0)
 }
@@ -351,13 +351,13 @@ func (h *Handler) getAndFormatVoiceArrivalsWithSession(c *gin.Context, phoneNumb
 	language := h.getLanguageFromRequest(c)
 	log.Printf(
 		"Formatting voice response for %s: stop=%s, arrivals=%d, excluded=%d, fallback=%t",
-		analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt), stopName, len(arrivals), excluded, fallbackUsed,
+		h.phoneHasher.HashForLogs(phoneNumber), stopName, len(arrivals), excluded, fallbackUsed,
 	)
 
 	message := formatters.FormatVoiceResponse(arrivals, stopName, h.LocalizationManager, language)
-	log.Printf("Voice message for %s: %s", analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt), message)
+	log.Printf("Voice message for %s: %s", h.phoneHasher.HashForLogs(phoneNumber), message)
 	if message == "" {
-		log.Printf("Empty voice response generated for %s", analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt))
+		log.Printf("Empty voice response generated for %s", h.phoneHasher.HashForLogs(phoneNumber))
 		language := h.getLanguageFromRequest(c)
 		h.ErrorHandler.HandleVoiceError(c, fmt.Errorf("failed to format voice response"), language)
 		return
@@ -369,11 +369,11 @@ func (h *Handler) getAndFormatVoiceArrivalsWithSession(c *gin.Context, phoneNumb
 		MinutesAfter: minutesAfter,
 	}
 	if err := h.SessionStore.SetVoiceSession(phoneNumber, session); err != nil {
-		log.Printf("Failed to set voice session for %s: %v", analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt), err)
+		log.Printf("Failed to set voice session for %s: %v", h.phoneHasher.HashForLogs(phoneNumber), err)
 	}
 	menuPrompt := h.LocalizationManager.GetString("voice.menu.more_departures", language) + " " + h.LocalizationManager.GetString("voice.menu.main_menu", language)
 
-	log.Printf("Rendering TwiML for %s with message length: %d", analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt), len(message))
+	log.Printf("Rendering TwiML for %s with message length: %d", h.phoneHasher.HashForLogs(phoneNumber), len(message))
 
 	// Create TwiML elements
 	var elements []twiml.Element
@@ -410,7 +410,7 @@ func (h *Handler) getAndFormatVoiceArrivalsWithSession(c *gin.Context, phoneNumb
 
 	// Generate TwiML
 	if twimlResult, err := twiml.Voice(elements); err != nil {
-		log.Printf("Failed to generate TwiML for %s: %v", analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt), err)
+		log.Printf("Failed to generate TwiML for %s: %v", h.phoneHasher.HashForLogs(phoneNumber), err)
 		errorMsg := h.LocalizationManager.GetString("voice.error.template_failed", language)
 
 		// Try to generate error response
@@ -419,7 +419,7 @@ func (h *Handler) getAndFormatVoiceArrivalsWithSession(c *gin.Context, phoneNumb
 			Language: language,
 		}
 		if errorTwiml, err2 := twiml.Voice([]twiml.Element{errorSay}); err2 != nil {
-			log.Printf("Failed to generate error TwiML for %s: %v", analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt), err2)
+			log.Printf("Failed to generate error TwiML for %s: %v", h.phoneHasher.HashForLogs(phoneNumber), err2)
 			// Use absolute fallback
 			fallback := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?><Response><Say>%s</Say></Response>`, errorMsg)
 			c.String(http.StatusOK, fallback)
@@ -428,7 +428,7 @@ func (h *Handler) getAndFormatVoiceArrivalsWithSession(c *gin.Context, phoneNumb
 		}
 		return
 	} else {
-		log.Printf("Generated TwiML for %s, length: %d", analytics.HashPhoneNumber(phoneNumber, h.analyticsHashSalt), len(twimlResult))
+		log.Printf("Generated TwiML for %s, length: %d", h.phoneHasher.HashForLogs(phoneNumber), len(twimlResult))
 		// Log first 500 chars of TwiML for debugging
 		if len(twimlResult) > 500 {
 			log.Printf("TwiML content preview: %s...", twimlResult[:500])

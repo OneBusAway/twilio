@@ -35,57 +35,6 @@ func TestNewEventWithSession(t *testing.T) {
 	assert.NotNil(t, event.Properties)
 }
 
-func TestHashPhoneNumber(t *testing.T) {
-	tests := []struct {
-		name        string
-		phoneNumber string
-		salt        string
-		want        string
-	}{
-		{
-			name:        "valid phone number",
-			phoneNumber: "+12065551234",
-			salt:        "test-salt",
-			want:        "6e7c4e6f5a6b8d9f6e5c4b3a2e1f0d9c8b7a6e5d4c3b2a1f0e9d8c7b6a5e4d3c",
-		},
-		{
-			name:        "empty phone number",
-			phoneNumber: "",
-			salt:        "test-salt",
-			want:        "",
-		},
-		{
-			name:        "different salt produces different hash",
-			phoneNumber: "+12065551234",
-			salt:        "different-salt",
-			want:        "different-hash",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := HashPhoneNumber(tt.phoneNumber, tt.salt)
-
-			if tt.phoneNumber == "" {
-				assert.Empty(t, result)
-			} else {
-				assert.NotEmpty(t, result)
-				assert.Len(t, result, 64) // SHA256 produces 64 character hex string
-
-				// Verify same input produces same output
-				result2 := HashPhoneNumber(tt.phoneNumber, tt.salt)
-				assert.Equal(t, result, result2)
-
-				// Verify different salt produces different hash
-				if tt.name == "different salt produces different hash" {
-					result3 := HashPhoneNumber(tt.phoneNumber, "test-salt")
-					assert.NotEqual(t, result, result3)
-				}
-			}
-		})
-	}
-}
-
 func TestSMSRequestEvent(t *testing.T) {
 	event := SMSRequestEvent("user-hash", "es-US", "75403")
 

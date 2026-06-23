@@ -6,6 +6,7 @@ import (
 	"oba-twilio/handlers/voice"
 	"oba-twilio/localization"
 	"oba-twilio/middleware"
+	"oba-twilio/privacy"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,9 +15,9 @@ type VoiceHandler struct {
 	*voice.Handler
 }
 
-func NewVoiceHandler(obaClient client.OneBusAwayClientInterface, locManager *localization.LocalizationManager) *VoiceHandler {
+func NewVoiceHandler(obaClient client.OneBusAwayClientInterface, locManager *localization.LocalizationManager, phoneHasher *privacy.Hasher) *VoiceHandler {
 	return &VoiceHandler{
-		Handler: voice.NewHandler(obaClient, locManager),
+		Handler: voice.NewHandler(obaClient, locManager, phoneHasher),
 	}
 }
 
@@ -26,9 +27,9 @@ func (h *VoiceHandler) Close() {
 	}
 }
 
-func (h *VoiceHandler) SetAnalytics(analyticsManager middleware.AnalyticsManager, hashSalt string) {
+func (h *VoiceHandler) SetAnalytics(analyticsManager middleware.AnalyticsManager) {
 	if h.Handler != nil {
-		h.Handler.SetAnalytics(analyticsManager, hashSalt)
+		h.Handler.SetAnalytics(analyticsManager)
 	}
 }
 
