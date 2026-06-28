@@ -91,35 +91,64 @@ keeps client/handler call sites untouched for those metrics.
 the raw URL — this bounds label cardinality. Requests that match no route (404)
 use the fixed label value `"unmatched"`.
 
+`method` **must be sanitized to a fixed allow-list** (GET, POST, PUT, DELETE,
+PATCH, HEAD, OPTIONS, CONNECT, TRACE); any other value maps to `"unknown"`.
+Without this, an attacker sending arbitrary method strings to an unmatched path
+(`route="unmatched"` is constant) drives unbounded `method` series — a
+memory-exhaustion vector (cf. CVE-2022-21698). This mirrors `client_golang`'s own
+`sanitizeMethod`. `status` is the numeric HTTP code rendered as a string (already
+bounded).
+
 ### OBA client (bridged)
 - `oba_api_requests_total` — counter (from `APICallCount`).
 - `oba_api_errors_total` — counter (from `APIErrorCount`).
-- `oba_api_request_duration_seconds` — see note below.
+- `oba_api_request_duration_seconds` — histogram, see note below.
 - `oba_validation_errors_total` — counter (from `ValidationErrors`).
 - `oba_circuit_breaker_state` — gauge (0=closed, 1=open, 2=half-open).
 - `oba_circuit_breaker_open_total` — counter (from `CircuitBreakerOpen`).
 
 **Note on API duration:** the client only keeps `TotalResponseTime` and
-`APICallCount`, not a distribution. We expose
-`oba_api_request_duration_seconds_sum` and `_count` as a synthetic series
-(documented as derived from running totals, not a true histogram). A true
-histogram would require instrumenting the client call path directly; that is out
-of scope for this change.
+`APICallCount`, not a distribution. The bridge emits this via
+`prometheus.MustNewConstHistogram(desc, uint64(APICallCount),
+TotalResponseTime.Seconds(), nil /* no buckets */)`. With a nil bucket map this
+produces a valid `histogram` family — `_sum`, `_count`, and an implicit
+`_bucket{le="+Inf"}` — so `rate(_sum)/rate(_count)` yields average latency. Do
+**not** register two standalone metrics literally named `..._sum`/`..._count`:
+those suffixes are reserved for histogram/summary families and standalone use is
+an anti-pattern that breaks tooling and would collide with a future real
+histogram of the same base name. Both inputs are monotonic, mapping cleanly onto
+count/sum (which Prometheus treats as counters).
 
 **Circuit-breaker state accessor:** the current circuit-breaker `state` field is
-private and the client exposes only the `CircuitBreakerOpen` *counter*, not the
-current state. Implementation adds a small read accessor (e.g.
-`client.CircuitBreakerState() int`) so the gauge can report live state.
+private and guarded by `cb.mutex`; the client exposes only the
+`CircuitBreakerOpen` *counter*, not the current state. Implementation adds a
+small read accessor (e.g. `client.CircuitBreakerState() int`) that takes
+`cb.mutex.RLock()` (the suite runs under `-race`) and maps the enum via an
+explicit `switch` (decoupled from iota order, though `CircuitClosed=0 /
+CircuitOpen=1 / CircuitHalfOpen=2` already matches the gauge values).
 
 ### Cache & session (bridged)
-- `cache_hits_total` — counter (client `CacheHits`).
-- `cache_misses_total` — counter (client `CacheMisses`).
-- `session_store_active_sessions` — gauge (`TotalSessions`).
-- `session_store_cache_hits_total` — counter (session `CacheHits`).
-- `session_store_cache_misses_total` — counter (session `CacheMisses`).
-- `session_store_evictions_total` — counter (session `Evictions`).
-- `session_store_expired_total` — counter (session `ExpiredSessions`).
-- `session_store_created_total` — counter (session `CreatedSessions`).
+- `oba_cache_hits_total` — counter (client `CacheHits`; `oba_`-prefixed to
+  distinguish from the session cache).
+- `oba_cache_misses_total` — counter (client `CacheMisses`).
+- `session_store_active_sessions{store}` — gauge (`TotalSessions`).
+- `session_store_cache_hits_total{store}` — counter (session `CacheHits`).
+- `session_store_cache_misses_total{store}` — counter (session `CacheMisses`).
+- `session_store_evictions_total{store}` — counter (session `Evictions`).
+- `session_store_expired_total{store}` — counter (session `ExpiredSessions`).
+- `session_store_created_total{store}` — counter (session `CreatedSessions`).
+
+**Multiple session stores (important).** There is no single shared session store.
+`main.go` constructs one store wired *only* into the health checker, while the
+SMS handler and the voice handler each create their own internal store. Bridging
+the health-checker's store would report an idle, orphaned store. Therefore the
+session bridge observes the **stores actually in use** — the SMS handler's store
+and the voice handler's store — distinguished by a low-cardinality `store` label
+(`sms` | `voice`). Each handler exposes a read accessor for its store. The
+health-checker store is left unchanged and is **not** bridged. (Consolidating to
+a single shared store is a sound future cleanup but is out of scope here: it
+would change `Close()` ownership and cross-flow session sharing, a behavioral
+change with its own risk.)
 
 ### Interactions (direct, instrumented in handlers)
 - `interactions_total{channel,outcome}` — counter.
@@ -140,16 +169,32 @@ fails, `agency="none"`.
 
 In `main.go`:
 1. `m := metrics.New()` constructs the registry and collectors once.
-2. Register bridge collectors with handles to `obaClient` and `sessionStore`:
-   `m.RegisterClientBridge(obaClient)`, `m.RegisterSessionBridge(sessionStore)`.
-3. Inject `m` into handlers: `NewSMSHandler(obaClient, locManager, m)` and
-   `NewVoiceHandler(obaClient, locManager, m)` gain a metrics parameter. Handlers
-   call `m.RecordInteraction(channel, outcome)` / `m.RecordStopLookup(result,
-   agency)` at the points where they already emit analytics events.
+2. Register bridge collectors:
+   - `m.RegisterClientBridge(obaClient)` — reads `client.GetMetrics()` +
+     `CircuitBreakerState()`.
+   - `m.RegisterSessionBridge("sms", smsHandler.SessionStore)` and
+     `m.RegisterSessionBridge("voice", voiceHandler.SessionStore())` — the
+     stores actually in use (see "Multiple session stores" above). The
+     health-checker store is not bridged.
+3. Inject `m` into handlers via a **setter**, mirroring the existing
+   `SetAnalytics` pattern, so existing 2-arg constructor call sites (and all
+   handler tests) keep compiling: `smsHandler.SetMetrics(m)` /
+   `voiceHandler.SetMetrics(m)`. Handlers call `m.RecordInteraction(channel,
+   outcome)` / `m.RecordStopLookup(result, agency)` at the points where they
+   already emit analytics events. `RecordInteraction`/`RecordStopLookup` are
+   **nil-safe** (no-op when metrics is nil) so tests that don't set metrics never
+   panic.
 4. Add the HTTP middleware: `r.Use(m.Middleware())` alongside the existing
-   analytics and health middleware.
-5. `/metrics` stays on the existing rate-limited route group, now served by
-   `m.Handler()` (promhttp).
+   analytics and health middleware. The middleware **skips** `/metrics` and the
+   `/health*` paths (matching the existing `HealthMiddleware` behavior) so scrape
+   and probe traffic don't dominate `http_requests_total`.
+5. `/metrics` stays on the existing rate-limited route group. Because that group
+   and its limiter are private to `health.Handler.SetupRoutes`, `SetupRoutes`
+   gains a `metricsHandler gin.HandlerFunc` parameter (just a func value — no
+   import of the `metrics` package) and registers it on the rate-limited group.
+   `main.go` passes `m.Handler()` (a `gin.WrapH` of `promhttp.HandlerFor(reg,
+   …)`). Optionally wrap with `promhttp.InstrumentMetricHandler` for the standard
+   `promhttp_metric_handler_requests_total` scrape counters.
 
 ### Removals from the `health` package
 - Delete `formatPrometheusMetrics`, `formatMetricLine`, and
@@ -158,16 +203,30 @@ In `main.go`:
   (`metricsCollector` field, `UpdateMetrics`, `GetMetrics` metrics path), **or**
   reduce `MetricsInfo` to only what the JSON `/health/*` endpoints still need.
 - Remove the `Accept: application/json` branch and the hand-rolled Prometheus
-  path from `MetricsHandler`; the route now delegates to the `metrics` package.
+  path from `MetricsHandler` (the handler is removed; the route is served by the
+  injected `metricsHandler`).
+- **Update the affected tests** (these reference deleted symbols and will not
+  compile otherwise):
+  - `health/metrics_test.go` is built entirely on `MetricsCollector` /
+    `formatPrometheusMetrics` / `MetricsInfo` / the `Increment*`/`Update*`
+    methods — delete or rewrite it. (Verified: those `Increment*`/`Update*`
+    methods are called only from tests, never production, so deletion is safe.)
+  - `health/handlers_test.go` (~line 126) exercises the `MetricsInfo` JSON /
+    `Accept: application/json` branch being removed — update it to assert the new
+    delegated behavior (or drop that assertion).
+- `Manager.GetMetrics()` / `MetricsInfo` are consumed only by the removed
+  `/metrics` handler; the JSON `/health/*` endpoints use the independent
+  `collectDependencyInfo` path, so their deletion does not affect health output.
 - `/health`, `/health/ready`, `/health/detailed`, `/health/stats`,
   `/health/config`, `/health/cache` endpoints and the health *check* system are
   untouched. Only the metrics-formatting responsibility leaves the package.
 
 ## Error handling & edge cases
 
-- **Cardinality:** `route` from `FullPath()` only; 404 → `"unmatched"`. `agency`
-  from a known fixed set; unknown/none → `"none"`. `status` is the numeric HTTP
-  code as a string.
+- **Cardinality:** `route` from `FullPath()` only; 404 → `"unmatched"`.
+  `method` sanitized to a fixed allow-list; unknown → `"unknown"`. `agency` from
+  a known fixed set; unknown/none → `"none"`. `status` is the numeric HTTP code
+  as a string. `store` label is the fixed set `{sms, voice}`.
 - **Custom registry:** prevents global-state panics; tests get fresh registries.
 - **Scrape safety:** bridge `Collect()` only reads snapshots
   (`GetMetrics()`), never mutates; safe under concurrent scrapes.
@@ -177,7 +236,8 @@ In `main.go`:
 ## Testing
 
 - `metrics/http_test.go`: middleware records correct `method`/`route`/`status`
-  labels and observes duration; 404 → `route="unmatched"`.
+  labels and observes duration; 404 → `route="unmatched"`; an unknown HTTP method
+  → `method="unknown"`; `/metrics` and `/health*` are skipped.
 - `metrics/bridge_test.go`: bridge collectors emit expected series for fake
   client/session metric snapshots, verified with
   `prometheus/testutil.CollectAndCompare`.
@@ -185,7 +245,10 @@ In `main.go`:
   contains `go_*` plus the registered app series.
 - Handler tests: `interactions_total` and `stop_lookups_total` increment with the
   correct labels for each outcome path (resolved / ambiguous / not_found /
-  error), extending existing handler test suites.
+  error), extending existing handler test suites. Handlers with `nil` metrics do
+  not panic.
+- `health` package tests updated for the removals: `health/metrics_test.go`
+  deleted/rewritten, `health/handlers_test.go` metrics-JSON assertion updated.
 - All gates pass: `make lint`, `make vet`, `make test`, `make fmt`.
 
 ## Dependencies & docs
@@ -199,6 +262,7 @@ In `main.go`:
 ## Out of scope
 
 - Authentication or a separate metrics port for `/metrics`.
-- A true latency histogram for OBA API calls (requires instrumenting the client
-  call path; only sum/count are exposed for now).
+- A true *bucketed* latency histogram for OBA API calls (requires instrumenting
+  the client call path; the const-histogram bridge exposes sum/count/+Inf only).
+- Consolidating the three session stores into one shared store.
 - Alerting rules, Grafana dashboards, or scrape configuration (consumer-side).
