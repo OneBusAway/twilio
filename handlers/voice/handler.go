@@ -1,6 +1,7 @@
 package voice
 
 import (
+	"oba-twilio/metrics"
 	"oba-twilio/models"
 	"oba-twilio/validation"
 
@@ -20,6 +21,7 @@ type Handler struct {
 	arrivalFilterConfig common.ArrivalFilterConfig
 	analyticsManager    middleware.AnalyticsManager
 	analyticsHashSalt   string
+	metrics             *metrics.Metrics
 }
 
 func NewHandler(obaClient client.OneBusAwayClientInterface, locManager *localization.LocalizationManager) *Handler {
@@ -46,6 +48,8 @@ func (h *Handler) SetAnalytics(analyticsManager middleware.AnalyticsManager, has
 	h.analyticsManager = analyticsManager
 	h.analyticsHashSalt = hashSalt
 }
+
+func (h *Handler) SetMetrics(m *metrics.Metrics) { h.metrics = m }
 
 func (h *Handler) SetArrivalFilterConfig(cfg common.ArrivalFilterConfig) {
 	h.arrivalFilterConfig = cfg

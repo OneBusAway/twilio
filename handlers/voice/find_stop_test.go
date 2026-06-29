@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"oba-twilio/localization"
+	"oba-twilio/metrics"
 	"oba-twilio/models"
 )
 
@@ -330,4 +331,23 @@ func TestGetAndFormatVoiceArrivals_LookupError(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "<Say")
 	mockClient.AssertExpectations(t)
+}
+
+func TestFindStopRecordsResolvedInteraction(t *testing.T) {
+	router, mockClient, h := setupFindStopHandler()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	expectSingleStopArrivals(mockClient, "75403", "1_75403", "44")
+
+	w := postFindStop(router, "+14444444444", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	mw := httptest.NewRecorder()
+	mr.ServeHTTP(mw, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(mw.Body.String(), `interactions_total{channel="voice",outcome="resolved"} 1`) {
+		t.Errorf("expected resolved voice interaction:\n%s", mw.Body.String())
+	}
 }
