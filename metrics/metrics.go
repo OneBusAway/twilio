@@ -13,6 +13,8 @@ type Metrics struct {
 	reg          *prometheus.Registry
 	httpRequests *prometheus.CounterVec
 	httpDuration *prometheus.HistogramVec
+	interactions *prometheus.CounterVec
+	stopLookups  *prometheus.CounterVec
 }
 
 // New creates a Metrics with a private registry and the standard Go runtime
@@ -40,6 +42,7 @@ func New() *Metrics {
 		[]string{"method", "route"},
 	)
 	reg.MustRegister(m.httpRequests, m.httpDuration)
+	m.interactions, m.stopLookups = newInteractionMetrics(reg)
 	return m
 }
 

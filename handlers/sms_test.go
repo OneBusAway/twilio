@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"oba-twilio/localization"
+	"oba-twilio/metrics"
 	"oba-twilio/models"
 )
 
@@ -667,4 +668,38 @@ func setupSessionForTimeTests(r *gin.Engine, mockClient *MockOneBusAwayClientSMS
 
 	// Create initial session
 	sendSMSRequest(r, "+12345678901", "75403")
+}
+
+func TestSMSHandlerRecordsResolvedInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	mockStopOptions := []models.StopOption{
+		{
+			FullStopID:  "1_75403",
+			AgencyName:  "King County Metro",
+			StopName:    "Pine St & 3rd Ave",
+			DisplayText: "King County Metro: Pine St & 3rd Ave",
+		},
+	}
+
+	mockResponse := createMockResponse("1_75403")
+	mockArrivals := createMockArrivals()
+
+	mockClient.On("FindAllMatchingStops", "75403").Return(mockStopOptions, nil)
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_75403", 30).Return(mockResponse, nil)
+	mockClient.On("ProcessArrivals", mockResponse, 30).Return(mockArrivals)
+
+	w := sendSMSRequest(router, "+12345678901", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Scrape and assert the interaction counter.
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(w2.Body.String(), `interactions_total{channel="sms",outcome="resolved"} 1`) {
+		t.Errorf("expected resolved interaction:\n%s", w2.Body.String())
+	}
 }
