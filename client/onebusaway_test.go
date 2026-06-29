@@ -234,3 +234,10 @@ func TestStopExists(t *testing.T) {
 	assert.True(t, client.stopExists("1_75403"))
 	assert.False(t, client.stopExists("1_invalid"))
 }
+
+func TestCircuitBreakerStateAccessor(t *testing.T) {
+	c := NewOneBusAwayClient("https://example.com", "test")
+	if got := c.CircuitBreakerState(); got != int(CircuitClosed) {
+		t.Errorf("expected closed (%d), got %d", CircuitClosed, got)
+	}
+}
