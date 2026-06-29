@@ -96,21 +96,3 @@ type HealthConfig struct {
 	EnableSystemInfo    bool
 	EnableMetrics       bool
 }
-
-// MetricsInfo contains Prometheus-compatible metrics
-type MetricsInfo struct {
-	HealthChecksTotal             int64   `json:"health_checks_total"`
-	HealthChecksDurationSeconds   float64 `json:"health_checks_duration_seconds"`
-	HealthChecksFailuresTotal     int64   `json:"health_checks_failures_total"`
-	DependencyRequestsTotal       int64   `json:"dependency_requests_total"`
-	DependencyErrorsTotal         int64   `json:"dependency_errors_total"`
-	DependencyResponseTimeSeconds float64 `json:"dependency_response_time_seconds"`
-	SessionStoreSessionsTotal     int64   `json:"session_store_sessions_total"`
-	SessionStoreCacheHitsTotal    int64   `json:"session_store_cache_hits_total"`
-	SessionStoreCacheMissesTotal  int64   `json:"session_store_cache_misses_total"`
-	CircuitBreakerState           int     `json:"circuit_breaker_state"` // 0=closed, 1=open, 2=half-open
-	SystemGoroutinesTotal         int     `json:"system_goroutines_total"`
-	SystemMemoryAllocBytes        uint64  `json:"system_memory_alloc_bytes"`
-	SystemMemoryUsagePercent      float64 `json:"system_memory_usage_percent"`
-	SystemUptimeSeconds           float64 `json:"system_uptime_seconds"`
-}

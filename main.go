@@ -22,6 +22,7 @@ import (
 	"oba-twilio/handlers/common"
 	"oba-twilio/health"
 	"oba-twilio/localization"
+	"oba-twilio/metrics"
 	"oba-twilio/middleware"
 )
 
@@ -187,12 +188,10 @@ func main() {
 			coverage.CenterLat, coverage.CenterLon, coverage.Radius)
 	}
 
-	// Initialize session store
-	sessionStore := common.NewImprovedSessionStore()
-	defer sessionStore.Close()
-
 	smsHandler := handlers.NewSMSHandler(obaClient, locManager)
 	voiceHandler := handlers.NewVoiceHandler(obaClient, locManager)
+	defer smsHandler.Close()
+	defer voiceHandler.Close()
 
 	// Pass analytics manager to handlers
 	handlers.SetAnalyticsManager(smsHandler, analyticsManager, analyticsConfig.HashSalt)
@@ -217,6 +216,14 @@ func main() {
 		arrivalFilterEnabled, arrivalFilterFallback, smsThreshold, voiceThreshold,
 	)
 
+	// Prometheus metrics
+	m := metrics.New()
+	m.RegisterClientBridge(obaClient)
+	m.RegisterSessionBridge("sms", smsHandler.SessionStore)
+	m.RegisterSessionBridge("voice", voiceHandler.SessionStore)
+	smsHandler.SetMetrics(m)
+	voiceHandler.SetMetrics(m)
+
 	// Initialize health check system
 	healthManager := health.NewManager(
 		health.WithTimeout(10*time.Second),
@@ -229,7 +236,9 @@ func main() {
 	// Register health checkers
 	healthManager.AddChecker(&health.SystemHealthChecker{})
 	healthManager.AddChecker(health.NewOneBusAwayHealthChecker(obaClient))
-	healthManager.AddChecker(health.NewSessionStoreHealthChecker(sessionStore))
+	// Health-check the live store the SMS handler uses (the same store /metrics
+	// reads), so /health and /metrics observe the same active session state.
+	healthManager.AddChecker(health.NewSessionStoreHealthChecker(smsHandler.SessionStore))
 	healthManager.AddChecker(health.NewLocalizationHealthChecker(locManager))
 	healthManager.AddChecker(health.NewHTTPServerHealthChecker(port))
 
@@ -243,6 +252,9 @@ func main() {
 		Enabled:  analyticsConfig.Enabled,
 		HashSalt: analyticsConfig.HashSalt,
 	}).Handler())
+
+	// Add Prometheus metrics middleware
+	r.Use(m.Middleware())
 
 	// Add health check middleware
 	r.Use(healthHandler.HealthMiddleware())
@@ -269,7 +281,7 @@ func main() {
 	})
 
 	// Setup comprehensive health check endpoints
-	healthHandler.SetupRoutes(r)
+	healthHandler.SetupRoutes(r, m.Handler())
 
 	r.POST("/sms", smsHandler.HandleSMS)
 	r.POST("/voice", voiceHandler.HandleVoiceStart)

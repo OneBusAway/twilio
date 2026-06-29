@@ -141,12 +141,14 @@ func (h *Handler) respondForStopID(c *gin.Context, req models.TwilioVoiceRequest
 	}
 
 	if err != nil {
+		h.metrics.RecordLookupOutcome("voice", "error", "none")
 		language := h.getLanguageFromRequest(c)
 		h.ErrorHandler.HandleVoiceError(c, err, language)
 		return
 	}
 
 	if len(matchingStops) == 0 {
+		h.metrics.RecordLookupOutcome("voice", "not_found", "none")
 		language := h.getLanguageFromRequest(c)
 		errorMsg := h.LocalizationManager.GetString("voice.error.stop_not_found", language)
 		if errorMsg == "" {
@@ -157,10 +159,12 @@ func (h *Handler) respondForStopID(c *gin.Context, req models.TwilioVoiceRequest
 	}
 
 	if len(matchingStops) > 1 {
+		h.metrics.RecordLookupOutcome("voice", "ambiguous", common.AgencyPrefix(matchingStops[0].FullStopID))
 		h.respondVoiceStopDisambiguation(c, req.From, stopID, matchingStops)
 		return
 	}
 
+	h.metrics.RecordLookupOutcome("voice", "resolved", common.AgencyPrefix(matchingStops[0].FullStopID))
 	h.getAndFormatVoiceArrivalsWithSession(c, req.From, matchingStops[0].FullStopID, 0)
 }
 
@@ -277,6 +281,7 @@ func (h *Handler) handleVoiceDisambiguationChoice(c *gin.Context, req models.Twi
 
 	log.Printf("User %s selected stop %s: %s", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), selectedStop.FullStopID, selectedStop.DisplayText)
 
+	h.metrics.RecordInteraction("voice", "resolved")
 	h.getAndFormatVoiceArrivalsWithSession(c, req.From, selectedStop.FullStopID, 0)
 }
 

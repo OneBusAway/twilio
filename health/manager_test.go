@@ -36,6 +36,7 @@ func TestNewManager(t *testing.T) {
 
 	if manager == nil {
 		t.Fatal("Expected manager to be created")
+		return
 	}
 
 	if manager.config.Timeout != 5*time.Second {

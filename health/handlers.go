@@ -183,25 +183,6 @@ func (h *Handler) DetailedHandler(c *gin.Context) {
 	c.JSON(statusCode, response)
 }
 
-// MetricsHandler handles Prometheus metrics requests
-// GET /metrics
-func (h *Handler) MetricsHandler(c *gin.Context) {
-	metrics := h.manager.GetMetrics()
-
-	// Check if client accepts JSON or wants Prometheus format
-	accept := c.GetHeader("Accept")
-	if accept == "application/json" {
-		c.Header("Content-Type", "application/json")
-		c.JSON(http.StatusOK, metrics)
-		return
-	}
-
-	// Return Prometheus format by default
-	prometheusMetrics := h.manager.metricsCollector.GetPrometheusMetrics()
-	c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	c.String(http.StatusOK, prometheusMetrics)
-}
-
 // StatsHandler provides basic statistics
 // GET /health/stats
 func (h *Handler) StatsHandler(c *gin.Context) {
@@ -263,7 +244,7 @@ func (h *Handler) CacheHandler(c *gin.Context) {
 }
 
 // SetupRoutes configures health check routes on a Gin router
-func (h *Handler) SetupRoutes(router *gin.Engine) {
+func (h *Handler) SetupRoutes(router *gin.Engine, metricsHandler gin.HandlerFunc) {
 	// Apply rate limiting to all health endpoints
 	rateLimited := router.Group("/")
 	rateLimited.Use(h.rateLimitMiddleware())
@@ -283,7 +264,7 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 	}
 
 	// Metrics endpoint (Prometheus compatible) - also rate limited
-	rateLimited.GET("/metrics", h.MetricsHandler)
+	rateLimited.GET("/metrics", metricsHandler)
 }
 
 // HealthMiddleware provides middleware for automatic health monitoring

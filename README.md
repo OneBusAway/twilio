@@ -148,6 +148,39 @@ go test .               # Test main application logic
 - **POST** `/voice` - Handle incoming voice calls (initial menu)
 - **POST** `/voice/input` - Handle voice input (DTMF digits)
 
+### Prometheus Metrics
+- **GET** `/metrics` - Prometheus metrics in standard exposition format (public, rate-limited)
+
+The endpoint requires no additional environment variables. `/metrics` and `/health*` traffic is excluded from HTTP latency series so scrape and probe requests do not skew percentiles.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| **HTTP** | | | |
+| `http_requests_total` | Counter | `method`, `route`, `status` | Total HTTP requests by method, route template, and status code |
+| `http_request_duration_seconds` | Histogram | `method`, `route` | HTTP request latency |
+| **OneBusAway Client** | | | |
+| `oba_api_requests_total` | Counter | — | Total OneBusAway API calls |
+| `oba_api_errors_total` | Counter | — | Total OneBusAway API errors |
+| `oba_api_request_duration_seconds` | Histogram | — | OneBusAway API request latency |
+| `oba_validation_errors_total` | Counter | — | Total OneBusAway response validation errors |
+| `oba_circuit_breaker_state` | Gauge | — | Circuit-breaker state (0=closed, 1=open, 2=half-open) |
+| `oba_circuit_breaker_open_total` | Counter | — | Total times the circuit breaker opened |
+| `oba_cache_hits_total` | Counter | — | Total OneBusAway API cache hits |
+| `oba_cache_misses_total` | Counter | — | Total OneBusAway API cache misses |
+| **Session Store** | | | |
+| `session_store_active_sessions` | Gauge | `store` | Active sessions (`store`: `sms` or `voice`) |
+| `session_store_cache_hits_total` | Counter | `store` | Session-store cache hits |
+| `session_store_cache_misses_total` | Counter | `store` | Session-store cache misses |
+| `session_store_evictions_total` | Counter | `store` | Sessions evicted |
+| `session_store_expired_total` | Counter | `store` | Sessions expired |
+| `session_store_created_total` | Counter | `store` | Sessions created |
+| **Interactions** | | | |
+| `interactions_total` | Counter | `channel`, `outcome` | Total user interactions by channel (`sms`/`voice`) and outcome |
+| `stop_lookups_total` | Counter | `result`, `agency` | Total stop lookups by result and matched agency prefix |
+| **Runtime** | | | |
+| `go_*` | various | — | Go runtime metrics (goroutines, GC, memory, etc.) |
+| `process_*` | various | — | OS process metrics (CPU, file descriptors, etc.) |
+
 ### Internal API Methods (OneBusAway Client)
 - `InitializeCoverage()` - Fetches server coverage area at startup
 - `GetCoverageArea()` - Returns calculated center point and radius

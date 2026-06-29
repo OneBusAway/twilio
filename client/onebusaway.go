@@ -139,6 +139,26 @@ func (cb *CircuitBreaker) recordFailure() {
 	}
 }
 
+// State returns the current circuit-breaker state under a read lock.
+func (cb *CircuitBreaker) State() CircuitState {
+	cb.mutex.RLock()
+	defer cb.mutex.RUnlock()
+	return cb.state
+}
+
+// CircuitBreakerState reports the live circuit-breaker state as an int
+// (0=closed, 1=open, 2=half-open) for metrics export.
+func (c *OneBusAwayClient) CircuitBreakerState() int {
+	switch c.circuitBreaker.State() {
+	case CircuitOpen:
+		return 1
+	case CircuitHalfOpen:
+		return 2
+	default:
+		return 0
+	}
+}
+
 // getDefaultConfig returns the default configuration with standard agency priorities
 func getDefaultConfig() *ClientConfig {
 	return &ClientConfig{

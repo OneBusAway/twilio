@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"oba-twilio/localization"
+	"oba-twilio/metrics"
 	"oba-twilio/models"
 )
 
@@ -330,4 +331,96 @@ func TestGetAndFormatVoiceArrivals_LookupError(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "<Say")
 	mockClient.AssertExpectations(t)
+}
+
+func TestFindStopRecordsResolvedInteraction(t *testing.T) {
+	router, mockClient, h := setupFindStopHandler()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	expectSingleStopArrivals(mockClient, "75403", "1_75403", "44")
+
+	w := postFindStop(router, "+14444444444", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	mw := httptest.NewRecorder()
+	mr.ServeHTTP(mw, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(mw.Body.String(), `interactions_total{channel="voice",outcome="resolved"} 1`) {
+		t.Errorf("expected resolved voice interaction:\n%s", mw.Body.String())
+	}
+}
+
+func TestFindStopRecordsErrorInteraction(t *testing.T) {
+	router, mockClient, h := setupFindStopHandler()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	mockClient.On("FindAllMatchingStops", "75403").Return(nil, fmt.Errorf("boom"))
+
+	w := postFindStop(router, "+14444444444", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	mw := httptest.NewRecorder()
+	mr.ServeHTTP(mw, httptest.NewRequest("GET", "/metrics", nil))
+	body := mw.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="voice",outcome="error"} 1`) {
+		t.Errorf("expected error voice interaction:\n%s", body)
+	}
+	if !strings.Contains(body, `stop_lookups_total{agency="none",result="error"} 1`) {
+		t.Errorf("expected error stop lookup:\n%s", body)
+	}
+}
+
+func TestFindStopRecordsNotFoundInteraction(t *testing.T) {
+	router, mockClient, h := setupFindStopHandler()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	mockClient.On("FindAllMatchingStops", "75403").Return([]models.StopOption{}, nil)
+
+	w := postFindStop(router, "+14444444444", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	mw := httptest.NewRecorder()
+	mr.ServeHTTP(mw, httptest.NewRequest("GET", "/metrics", nil))
+	body := mw.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="voice",outcome="not_found"} 1`) {
+		t.Errorf("expected not_found voice interaction:\n%s", body)
+	}
+	if !strings.Contains(body, `stop_lookups_total{agency="none",result="not_found"} 1`) {
+		t.Errorf("expected not_found stop lookup:\n%s", body)
+	}
+}
+
+func TestFindStopRecordsAmbiguousInteraction(t *testing.T) {
+	router, mockClient, h := setupFindStopHandler()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	stops := []models.StopOption{
+		{FullStopID: "1_75403", StopName: "Pine Street"},
+		{FullStopID: "40_75403", StopName: "Oak Avenue"},
+	}
+	mockClient.On("FindAllMatchingStops", "75403").Return(stops, nil)
+
+	w := postFindStop(router, "+14444444444", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	mw := httptest.NewRecorder()
+	mr.ServeHTTP(mw, httptest.NewRequest("GET", "/metrics", nil))
+	body := mw.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="voice",outcome="ambiguous"} 1`) {
+		t.Errorf("expected ambiguous voice interaction:\n%s", body)
+	}
+	if !strings.Contains(body, `stop_lookups_total{agency="1",result="ambiguous"} 1`) {
+		t.Errorf("expected ambiguous stop lookup:\n%s", body)
+	}
 }

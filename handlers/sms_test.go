@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"oba-twilio/localization"
+	"oba-twilio/metrics"
 	"oba-twilio/models"
 )
 
@@ -667,4 +668,163 @@ func setupSessionForTimeTests(r *gin.Engine, mockClient *MockOneBusAwayClientSMS
 
 	// Create initial session
 	sendSMSRequest(r, "+12345678901", "75403")
+}
+
+func TestSMSHandlerRecordsNotFoundInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	mockClient.On("FindAllMatchingStops", "99999").Return([]models.StopOption{}, nil)
+
+	w := sendSMSRequest(router, "+12345678901", "99999")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	body := w2.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="sms",outcome="not_found"} 1`) {
+		t.Errorf("expected not_found interaction:\n%s", body)
+	}
+	if !strings.Contains(body, `stop_lookups_total{agency="none",result="not_found"} 1`) {
+		t.Errorf("expected not_found stop lookup:\n%s", body)
+	}
+	mockClient.AssertExpectations(t)
+}
+
+func TestSMSHandlerRecordsErrorInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	// Upstream lookup failure (not an empty result).
+	mockClient.On("FindAllMatchingStops", "88888").Return([]models.StopOption(nil), assert.AnError)
+
+	w := sendSMSRequest(router, "+12345678901", "88888")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	body := w2.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="sms",outcome="error"} 1`) {
+		t.Errorf("expected error interaction:\n%s", body)
+	}
+	// An upstream error must stay distinct from a genuine not_found result.
+	if !strings.Contains(body, `stop_lookups_total{agency="none",result="error"} 1`) {
+		t.Errorf("expected error stop lookup (distinct from not_found):\n%s", body)
+	}
+	mockClient.AssertExpectations(t)
+}
+
+func TestSMSHandlerRecordsAmbiguousInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	mockStopOptions := []models.StopOption{
+		{FullStopID: "1_75403", AgencyName: "King County Metro", StopName: "Pine St & 3rd Ave", DisplayText: "King County Metro: Pine St & 3rd Ave"},
+		{FullStopID: "40_75403", AgencyName: "Sound Transit", StopName: "Pine St Station", DisplayText: "Sound Transit: Pine St Station"},
+	}
+	mockClient.On("FindAllMatchingStops", "75403").Return(mockStopOptions, nil)
+
+	w := sendSMSRequest(router, "+12345678901", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	body := w2.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="sms",outcome="ambiguous"} 1`) {
+		t.Errorf("expected ambiguous interaction:\n%s", body)
+	}
+	if !strings.Contains(body, `stop_lookups_total{agency="1",result="ambiguous"} 1`) {
+		t.Errorf("expected ambiguous stop lookup with agency=1:\n%s", body)
+	}
+	mockClient.AssertExpectations(t)
+}
+
+func TestSMSHandlerRecordsResolvedInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	mockStopOptions := []models.StopOption{
+		{
+			FullStopID:  "1_75403",
+			AgencyName:  "King County Metro",
+			StopName:    "Pine St & 3rd Ave",
+			DisplayText: "King County Metro: Pine St & 3rd Ave",
+		},
+	}
+
+	mockResponse := createMockResponse("1_75403")
+	mockArrivals := createMockArrivals()
+
+	mockClient.On("FindAllMatchingStops", "75403").Return(mockStopOptions, nil)
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_75403", 30).Return(mockResponse, nil)
+	mockClient.On("ProcessArrivals", mockResponse, 30).Return(mockArrivals)
+
+	w := sendSMSRequest(router, "+12345678901", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Scrape and assert the interaction counter.
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(w2.Body.String(), `interactions_total{channel="sms",outcome="resolved"} 1`) {
+		t.Errorf("expected resolved interaction:\n%s", w2.Body.String())
+	}
+}
+
+func TestSMSHandlerRecordsResolvedOnDisambiguationChoice(t *testing.T) {
+	_, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	stopOptions := []models.StopOption{
+		{
+			FullStopID:  "1_12345",
+			AgencyName:  "King County Metro",
+			StopName:    "Pine St & 3rd Ave",
+			DisplayText: "King County Metro: Pine St & 3rd Ave",
+		},
+		{
+			FullStopID:  "40_12345",
+			AgencyName:  "Sound Transit",
+			StopName:    "University Street Station",
+			DisplayText: "Sound Transit: University Street Station",
+		},
+	}
+	session := &models.DisambiguationSession{StopOptions: stopOptions}
+	err := h.SessionStore.SetDisambiguationSession("+12345678901", session)
+	assert.NoError(t, err)
+
+	mockResponse := createMockResponse("1_12345")
+	mockArrivals := createMockArrivals()
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_12345", 30).Return(mockResponse, nil)
+	mockClient.On("ProcessArrivals", mockResponse, 30).Return(mockArrivals)
+
+	// Build a fresh router attached to our metrics-instrumented handler.
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/sms", h.HandleSMS)
+
+	w := sendSMSRequest(router, "+12345678901", "1")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Scrape and assert the interaction counter.
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(w2.Body.String(), `interactions_total{channel="sms",outcome="resolved"} 1`) {
+		t.Errorf("expected resolved interaction after disambiguation choice:\n%s", w2.Body.String())
+	}
+	mockClient.AssertExpectations(t)
 }
