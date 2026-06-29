@@ -53,6 +53,28 @@ func TestMiddlewareUnmatchedAndUnknownMethod(t *testing.T) {
 	}
 }
 
+func TestSanitizeMethodLowercase(t *testing.T) {
+	if got := sanitizeMethod("get"); got != "GET" {
+		t.Errorf("sanitizeMethod(\"get\") = %q, want \"GET\"", got)
+	}
+}
+
+func TestMiddlewareDurationLabels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := New()
+	r := gin.New()
+	r.Use(m.Middleware())
+	r.GET("/voice/find_stop", func(c *gin.Context) { c.String(200, "ok") })
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/voice/find_stop", nil))
+
+	body := scrape(m)
+	if !strings.Contains(body, `http_request_duration_seconds_count{method="GET",route="/voice/find_stop"} 1`) {
+		t.Errorf("missing duration count with labels:\n%s", body)
+	}
+}
+
 func TestMiddlewareSkipsMetricsAndHealth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	m := New()

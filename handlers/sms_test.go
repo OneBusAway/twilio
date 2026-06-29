@@ -670,6 +670,58 @@ func setupSessionForTimeTests(r *gin.Engine, mockClient *MockOneBusAwayClientSMS
 	sendSMSRequest(r, "+12345678901", "75403")
 }
 
+func TestSMSHandlerRecordsNotFoundInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	mockClient.On("FindAllMatchingStops", "99999").Return([]models.StopOption{}, nil)
+
+	w := sendSMSRequest(router, "+12345678901", "99999")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	body := w2.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="sms",outcome="not_found"} 1`) {
+		t.Errorf("expected not_found interaction:\n%s", body)
+	}
+	if !strings.Contains(body, `stop_lookups_total{agency="none",result="not_found"} 1`) {
+		t.Errorf("expected not_found stop lookup:\n%s", body)
+	}
+	mockClient.AssertExpectations(t)
+}
+
+func TestSMSHandlerRecordsAmbiguousInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	mockStopOptions := []models.StopOption{
+		{FullStopID: "1_75403", AgencyName: "King County Metro", StopName: "Pine St & 3rd Ave", DisplayText: "King County Metro: Pine St & 3rd Ave"},
+		{FullStopID: "40_75403", AgencyName: "Sound Transit", StopName: "Pine St Station", DisplayText: "Sound Transit: Pine St Station"},
+	}
+	mockClient.On("FindAllMatchingStops", "75403").Return(mockStopOptions, nil)
+
+	w := sendSMSRequest(router, "+12345678901", "75403")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	body := w2.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="sms",outcome="ambiguous"} 1`) {
+		t.Errorf("expected ambiguous interaction:\n%s", body)
+	}
+	if !strings.Contains(body, `stop_lookups_total{agency="1",result="ambiguous"} 1`) {
+		t.Errorf("expected ambiguous stop lookup with agency=1:\n%s", body)
+	}
+	mockClient.AssertExpectations(t)
+}
+
 func TestSMSHandlerRecordsResolvedInteraction(t *testing.T) {
 	router, mockClient, h := setupSMSTestRouter()
 	m := metrics.New()

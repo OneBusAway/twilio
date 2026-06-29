@@ -40,17 +40,17 @@ func (m *Metrics) Middleware() gin.HandlerFunc {
 		}
 
 		start := time.Now()
+		defer func() {
+			// Resolve labels inside the defer so panics recovered upstream are
+			// still counted (c.FullPath() is only valid after routing).
+			route := c.FullPath()
+			if route == "" {
+				route = "unmatched"
+			}
+			method := sanitizeMethod(c.Request.Method)
+			m.httpRequests.WithLabelValues(method, route, strconv.Itoa(c.Writer.Status())).Inc()
+			m.httpDuration.WithLabelValues(method, route).Observe(time.Since(start).Seconds())
+		}()
 		c.Next()
-
-		// Resolve labels once, after routing: c.FullPath() is only populated
-		// once Gin has matched the route.
-		route := c.FullPath()
-		if route == "" {
-			route = "unmatched"
-		}
-		method := sanitizeMethod(c.Request.Method)
-
-		m.httpRequests.WithLabelValues(method, route, strconv.Itoa(c.Writer.Status())).Inc()
-		m.httpDuration.WithLabelValues(method, route).Observe(time.Since(start).Seconds())
 	}
 }

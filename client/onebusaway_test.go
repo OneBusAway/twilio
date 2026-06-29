@@ -241,3 +241,30 @@ func TestCircuitBreakerStateAccessor(t *testing.T) {
 		t.Errorf("expected closed (%d), got %d", CircuitClosed, got)
 	}
 }
+
+func TestCircuitBreakerStateMappings(t *testing.T) {
+	// Pin the iota → wire-value contract: metrics export relies on these exact ints.
+	// The states cannot be driven via the public Call() API without a real timeout,
+	// so we set the state directly (same package, unexported field is accessible).
+	if int(CircuitClosed) != 0 || int(CircuitOpen) != 1 || int(CircuitHalfOpen) != 2 {
+		t.Fatal("CircuitState iota values changed — update CircuitBreakerState() mapping")
+	}
+
+	c := NewOneBusAwayClient("https://example.com", "test")
+
+	// open → 1
+	c.circuitBreaker.mutex.Lock()
+	c.circuitBreaker.state = CircuitOpen
+	c.circuitBreaker.mutex.Unlock()
+	if got := c.CircuitBreakerState(); got != 1 {
+		t.Errorf("expected 1 (open), got %d", got)
+	}
+
+	// half-open → 2
+	c.circuitBreaker.mutex.Lock()
+	c.circuitBreaker.state = CircuitHalfOpen
+	c.circuitBreaker.mutex.Unlock()
+	if got := c.CircuitBreakerState(); got != 2 {
+		t.Errorf("expected 2 (half-open), got %d", got)
+	}
+}

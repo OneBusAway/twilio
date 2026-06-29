@@ -9,6 +9,8 @@ import (
 )
 
 // Metrics owns the Prometheus registry and all registered collectors.
+// Use New() to construct — the zero value is unusable. The Record* methods are
+// nil-safe, but Middleware and Handler require a fully constructed instance.
 type Metrics struct {
 	reg          *prometheus.Registry
 	httpRequests *prometheus.CounterVec
@@ -44,9 +46,4 @@ func New() *Metrics {
 	reg.MustRegister(m.httpRequests, m.httpDuration)
 	m.interactions, m.stopLookups = newInteractionMetrics(reg)
 	return m
-}
-
-// Registry exposes the underlying registry (for tests and registration).
-func (m *Metrics) Registry() *prometheus.Registry {
-	return m.reg
 }

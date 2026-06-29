@@ -44,6 +44,8 @@ func (c *sessionCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *sessionCollector) Collect(ch chan<- prometheus.Metric) {
+	// Intentionally tolerates a Closed store: GetMetrics only reads atomics/maps
+	// under RLock, so a future Close() change must not introduce a scrape panic.
 	m := c.src.GetMetrics()
 	if m == nil {
 		return
