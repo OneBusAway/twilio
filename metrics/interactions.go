@@ -18,6 +18,21 @@ func (m *Metrics) RecordStopLookup(result, agency string) {
 	m.stopLookups.WithLabelValues(result, agency).Inc()
 }
 
+// RecordLookupOutcome records a stop-lookup outcome on both interactions_total
+// and stop_lookups_total in one call. The interaction outcome and the lookup
+// result use the same label, except that an "error" outcome maps to a
+// "not_found" lookup result (the lookup yielded nothing usable). This keeps the
+// two-counter mapping in one place so the SMS and voice call sites can't drift.
+// Nil-safe.
+func (m *Metrics) RecordLookupOutcome(channel, outcome, agency string) {
+	m.RecordInteraction(channel, outcome)
+	result := outcome
+	if outcome == "error" {
+		result = "not_found"
+	}
+	m.RecordStopLookup(result, agency)
+}
+
 func newInteractionMetrics(reg *prometheus.Registry) (*prometheus.CounterVec, *prometheus.CounterVec) {
 	interactions := prometheus.NewCounterVec(
 		prometheus.CounterOpts{

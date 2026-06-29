@@ -172,15 +172,13 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 		if h.analyticsManager != nil {
 			middleware.TrackError(c.Request.Context(), h.analyticsManager, req.From, "stop_lookup", err.Error(), h.analyticsHashSalt)
 		}
-		h.metrics.RecordInteraction("sms", "error")
-		h.metrics.RecordStopLookup("not_found", "none")
+		h.metrics.RecordLookupOutcome("sms", "error", "none")
 		h.ErrorHandler.HandleSMSError(c, err, language)
 		return
 	}
 
 	if len(matchingStops) == 0 {
-		h.metrics.RecordInteraction("sms", "not_found")
-		h.metrics.RecordStopLookup("not_found", "none")
+		h.metrics.RecordLookupOutcome("sms", "not_found", "none")
 		errorMsg := h.LocalizationManager.GetString("sms.no_stops_found", language, stopID)
 		twiml, _ := formatters.GenerateTwiMLSMS(errorMsg)
 		c.String(http.StatusOK, twiml)
@@ -205,8 +203,7 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 			sessionID := fmt.Sprintf("sms_%s_%d", req.From, time.Now().Unix())
 			middleware.TrackDisambiguationPresented(c.Request.Context(), h.analyticsManager, req.From, sessionID, h.analyticsHashSalt, len(matchingStops))
 		}
-		h.metrics.RecordInteraction("sms", "ambiguous")
-		h.metrics.RecordStopLookup("ambiguous", common.AgencyPrefix(matchingStops[0].FullStopID))
+		h.metrics.RecordLookupOutcome("sms", "ambiguous", common.AgencyPrefix(matchingStops[0].FullStopID))
 
 		twiml, _ := formatters.GenerateTwiMLSMS(disambiguationMsg)
 		c.String(http.StatusOK, twiml)
@@ -214,8 +211,7 @@ func (h *SMSHandler) HandleSMS(c *gin.Context) {
 	}
 
 	// Single stop found, get arrivals directly
-	h.metrics.RecordInteraction("sms", "resolved")
-	h.metrics.RecordStopLookup("resolved", common.AgencyPrefix(matchingStops[0].FullStopID))
+	h.metrics.RecordLookupOutcome("sms", "resolved", common.AgencyPrefix(matchingStops[0].FullStopID))
 	// For SMS "Stop:" header we want the stop name (not "Agency: Stop").
 	h.getAndFormatArrivalsWithStopNameAndSession(c, req.From, matchingStops[0].FullStopID, matchingStops[0].StopName, smsSession)
 }
