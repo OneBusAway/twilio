@@ -299,43 +299,6 @@ func (h *Handler) HealthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// Custom response writer to capture response data
-type responseWriter struct {
-	gin.ResponseWriter
-	body []byte
-}
-
-func (w *responseWriter) Write(data []byte) (int, error) {
-	w.body = append(w.body, data...)
-	return w.ResponseWriter.Write(data)
-}
-
-// HealthResponseMiddleware captures response data for health monitoring
-func (h *Handler) HealthResponseMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Create custom response writer
-		writer := &responseWriter{
-			ResponseWriter: c.Writer,
-			body:           make([]byte, 0),
-		}
-		c.Writer = writer
-
-		// Process request
-		c.Next()
-
-		// Monitor response for health indicators
-		statusCode := c.Writer.Status()
-		if statusCode >= 500 {
-			// Server error - could indicate health issues
-			// In a real implementation, you might want to:
-			// - Increment error counters
-			// - Trigger alerts
-			// - Log detailed error information
-			_ = statusCode // Placeholder to satisfy linter
-		}
-	}
-}
-
 // formatDuration formats a duration for human readability
 func formatDuration(d time.Duration) string {
 	if d < time.Millisecond {

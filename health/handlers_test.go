@@ -369,29 +369,6 @@ func TestHealthMiddleware(t *testing.T) {
 	}
 }
 
-func TestHealthResponseMiddleware(t *testing.T) {
-	handler, _ := setupTestHandler()
-
-	router := gin.New()
-	router.Use(handler.HealthResponseMiddleware())
-	router.GET("/test", func(c *gin.Context) {
-		c.String(200, "test response")
-	})
-
-	req, _ := http.NewRequest("GET", "/test", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if body != "test response" {
-		t.Errorf("Expected 'test response', got %s", body)
-	}
-}
-
 func TestSetupMinimalRoutes(t *testing.T) {
 	handler, _ := setupTestHandler()
 
