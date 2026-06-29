@@ -8,6 +8,8 @@ func TestResolveMetricsPort(t *testing.T) {
 		{"9119", "9119"},
 		{"8000", "8000"},
 		{"  9200 ", "9200"},
+		{"1", "1"},         // inclusive lower bound
+		{"65535", "65535"}, // inclusive upper bound
 		{"abc", "9119"},
 		{"0", "9119"},
 		{"-5", "9119"},

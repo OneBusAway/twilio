@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -347,12 +348,24 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := publicSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Public server shutdown error: %v", err)
-	}
-	if err := internalSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Metrics server shutdown error: %v", err)
-	}
+	// Drain both servers concurrently so they share the deadline in parallel
+	// rather than the public server's drain starving the internal server (and
+	// the analytics flush below) of the remaining budget.
+	var shutdownWG sync.WaitGroup
+	shutdownWG.Add(2)
+	go func() {
+		defer shutdownWG.Done()
+		if err := publicSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Public server shutdown error: %v", err)
+		}
+	}()
+	go func() {
+		defer shutdownWG.Done()
+		if err := internalSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Metrics server shutdown error: %v", err)
+		}
+	}()
+	shutdownWG.Wait()
 
 	// Flush and close analytics
 	log.Println("Flushing analytics...")
@@ -399,8 +412,9 @@ func parseEnvInt(name string, defaultValue int) int {
 const defaultMetricsPort = "9119"
 
 // resolveMetricsPort validates a METRICS_PORT value. It accepts an integer in
-// [1,65535] and returns it as a canonical string; empty, non-numeric, or
-// out-of-range input falls back to defaultMetricsPort with a logged warning.
+// [1,65535] and returns it as a canonical string. An unset (empty) value
+// silently defaults to defaultMetricsPort; a non-numeric or out-of-range value
+// also defaults but emits a logged warning.
 func resolveMetricsPort(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

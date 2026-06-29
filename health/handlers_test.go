@@ -68,11 +68,27 @@ func TestPublicRouterRejectsInternalRoutes(t *testing.T) {
 	public := gin.New()
 	h.SetupPublicRoutes(public)
 
-	for _, path := range []string{"/metrics", "/health/detailed", "/health/config", "/health/stats"} {
+	for _, path := range []string{"/metrics", "/health/detailed", "/health/config", "/health/stats", "/health/cache"} {
 		w := httptest.NewRecorder()
 		public.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != http.StatusNotFound {
 			t.Errorf("%s should be 404 on the public router, got %d", path, w.Code)
+		}
+	}
+}
+
+func TestStatusCode(t *testing.T) {
+	cases := []struct {
+		status Status
+		want   int
+	}{
+		{StatusHealthy, http.StatusOK},
+		{StatusDegraded, http.StatusOK},
+		{StatusUnhealthy, http.StatusServiceUnavailable},
+	}
+	for _, c := range cases {
+		if got := statusCode(c.status); got != c.want {
+			t.Errorf("statusCode(%q) = %d, want %d", c.status, got, c.want)
 		}
 	}
 }

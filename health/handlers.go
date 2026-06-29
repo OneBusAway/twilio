@@ -305,8 +305,8 @@ type JSONError struct {
 	Time    time.Time `json:"timestamp"`
 }
 
-// statusCode maps a health Status to the probe HTTP status code: healthy and
-// degraded are "up" (200); unhealthy is 503.
+// statusCode maps a health Status to the probe HTTP status code: StatusUnhealthy
+// is 503; everything else (healthy, degraded, or any future status) is 200.
 func statusCode(s Status) int {
 	if s == StatusUnhealthy {
 		return http.StatusServiceUnavailable
