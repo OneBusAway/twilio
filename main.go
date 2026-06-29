@@ -188,12 +188,10 @@ func main() {
 			coverage.CenterLat, coverage.CenterLon, coverage.Radius)
 	}
 
-	// Initialize session store
-	sessionStore := common.NewImprovedSessionStore()
-	defer sessionStore.Close()
-
 	smsHandler := handlers.NewSMSHandler(obaClient, locManager)
 	voiceHandler := handlers.NewVoiceHandler(obaClient, locManager)
+	defer smsHandler.Close()
+	defer voiceHandler.Close()
 
 	// Pass analytics manager to handlers
 	handlers.SetAnalyticsManager(smsHandler, analyticsManager, analyticsConfig.HashSalt)
@@ -238,7 +236,9 @@ func main() {
 	// Register health checkers
 	healthManager.AddChecker(&health.SystemHealthChecker{})
 	healthManager.AddChecker(health.NewOneBusAwayHealthChecker(obaClient))
-	healthManager.AddChecker(health.NewSessionStoreHealthChecker(sessionStore))
+	// Health-check the live store the SMS handler uses (the same store /metrics
+	// reads), so /health and /metrics observe the same active session state.
+	healthManager.AddChecker(health.NewSessionStoreHealthChecker(smsHandler.SessionStore))
 	healthManager.AddChecker(health.NewLocalizationHealthChecker(locManager))
 	healthManager.AddChecker(health.NewHTTPServerHealthChecker(port))
 

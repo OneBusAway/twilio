@@ -694,6 +694,32 @@ func TestSMSHandlerRecordsNotFoundInteraction(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
+func TestSMSHandlerRecordsErrorInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	// Upstream lookup failure (not an empty result).
+	mockClient.On("FindAllMatchingStops", "88888").Return([]models.StopOption(nil), assert.AnError)
+
+	w := sendSMSRequest(router, "+12345678901", "88888")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	body := w2.Body.String()
+	if !strings.Contains(body, `interactions_total{channel="sms",outcome="error"} 1`) {
+		t.Errorf("expected error interaction:\n%s", body)
+	}
+	// An upstream error must stay distinct from a genuine not_found result.
+	if !strings.Contains(body, `stop_lookups_total{agency="none",result="error"} 1`) {
+		t.Errorf("expected error stop lookup (distinct from not_found):\n%s", body)
+	}
+	mockClient.AssertExpectations(t)
+}
+
 func TestSMSHandlerRecordsAmbiguousInteraction(t *testing.T) {
 	router, mockClient, h := setupSMSTestRouter()
 	m := metrics.New()

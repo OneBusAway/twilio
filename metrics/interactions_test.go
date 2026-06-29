@@ -26,7 +26,7 @@ func TestRecordNilSafe(t *testing.T) {
 	m.RecordStopLookup("not_found", "none")
 }
 
-func TestRecordLookupOutcome_ErrorRemapsToNotFound(t *testing.T) {
+func TestRecordLookupOutcome_ErrorStaysDistinct(t *testing.T) {
 	m := New()
 	m.RecordLookupOutcome("sms", "error", "none")
 
@@ -34,8 +34,13 @@ func TestRecordLookupOutcome_ErrorRemapsToNotFound(t *testing.T) {
 	if !strings.Contains(body, `interactions_total{channel="sms",outcome="error"} 1`) {
 		t.Errorf("missing interactions_total for error:\n%s", body)
 	}
-	if !strings.Contains(body, `stop_lookups_total{agency="none",result="not_found"} 1`) {
-		t.Errorf("missing stop_lookups_total not_found remap:\n%s", body)
+	// An "error" outcome must remain its own result label, not be conflated with
+	// a genuinely empty "not_found" lookup.
+	if !strings.Contains(body, `stop_lookups_total{agency="none",result="error"} 1`) {
+		t.Errorf("missing stop_lookups_total error result:\n%s", body)
+	}
+	if strings.Contains(body, `result="not_found"`) {
+		t.Errorf("error outcome must not be recorded as not_found:\n%s", body)
 	}
 }
 
