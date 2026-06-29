@@ -62,8 +62,8 @@ func main() {
 	}
 
 	metricsPort := resolveMetricsPort(os.Getenv("METRICS_PORT"))
-	if metricsPortConflicts(metricsPort, port) {
-		log.Fatalf("METRICS_PORT (%s) must differ from PORT (%s)", metricsPort, port)
+	if metricsPort == port {
+		log.Fatalf("METRICS_PORT (%s) must differ from PORT (%s); the two servers cannot share a port", metricsPort, port)
 	}
 
 	obaAPIKey := os.Getenv("ONEBUSAWAY_API_KEY")
@@ -412,10 +412,4 @@ func resolveMetricsPort(raw string) string {
 		return defaultMetricsPort
 	}
 	return strconv.Itoa(parsed)
-}
-
-// metricsPortConflicts reports whether the internal metrics port collides with
-// the public server port. The two http.Servers cannot share a port.
-func metricsPortConflicts(metricsPort, mainPort string) bool {
-	return metricsPort == mainPort
 }

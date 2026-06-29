@@ -112,54 +112,6 @@ func (h *Handler) rateLimitMiddleware() gin.HandlerFunc {
 	}
 }
 
-// HealthHandler handles basic health check requests (liveness probe)
-// GET /health
-func (h *Handler) HealthHandler(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
-
-	response := h.manager.CheckHealthLiveness(ctx)
-
-	// Determine HTTP status code based on health status
-	statusCode := http.StatusOK
-	switch response.Status {
-	case StatusHealthy:
-		statusCode = http.StatusOK
-	case StatusDegraded:
-		statusCode = http.StatusOK // Still considered "alive" for liveness probes
-	case StatusUnhealthy:
-		statusCode = http.StatusServiceUnavailable
-	}
-
-	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-	c.Header("Content-Type", "application/json")
-	c.JSON(statusCode, response)
-}
-
-// ReadinessHandler handles readiness check requests (readiness probe)
-// GET /health/ready
-func (h *Handler) ReadinessHandler(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
-	defer cancel()
-
-	response := h.manager.CheckHealthReadiness(ctx)
-
-	// Determine HTTP status code based on health status
-	statusCode := http.StatusOK
-	switch response.Status {
-	case StatusHealthy:
-		statusCode = http.StatusOK
-	case StatusDegraded:
-		statusCode = http.StatusOK // Still ready to serve traffic with degraded performance
-	case StatusUnhealthy:
-		statusCode = http.StatusServiceUnavailable
-	}
-
-	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-	c.Header("Content-Type", "application/json")
-	c.JSON(statusCode, response)
-}
-
 // DetailedHandler handles detailed health check requests
 // GET /health/detailed
 func (h *Handler) DetailedHandler(c *gin.Context) {
@@ -362,10 +314,10 @@ func statusCode(s Status) int {
 	return http.StatusOK
 }
 
-// PublicLivenessHandler is the internet-facing liveness probe. It runs the same
-// checks as HealthHandler to derive the status code but returns a status-only
-// body, so the public port never exposes SystemInfo, per-check Metadata, or
-// error strings.
+// PublicLivenessHandler is the internet-facing liveness probe. It runs the
+// liveness checks to derive the status code but returns a status-only body, so
+// the public port never exposes SystemInfo, per-check Metadata, or error
+// strings.
 // GET /health
 func (h *Handler) PublicLivenessHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)

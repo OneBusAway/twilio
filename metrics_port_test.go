@@ -19,12 +19,3 @@ func TestResolveMetricsPort(t *testing.T) {
 		}
 	}
 }
-
-func TestMetricsPortConflicts(t *testing.T) {
-	if !metricsPortConflicts("8080", "8080") {
-		t.Error("expected conflict for equal ports")
-	}
-	if metricsPortConflicts("9119", "8080") {
-		t.Error("did not expect conflict for differing ports")
-	}
-}
