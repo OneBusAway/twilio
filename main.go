@@ -22,6 +22,7 @@ import (
 	"oba-twilio/handlers/common"
 	"oba-twilio/health"
 	"oba-twilio/localization"
+	"oba-twilio/metrics"
 	"oba-twilio/middleware"
 )
 
@@ -217,6 +218,14 @@ func main() {
 		arrivalFilterEnabled, arrivalFilterFallback, smsThreshold, voiceThreshold,
 	)
 
+	// Prometheus metrics
+	m := metrics.New()
+	m.RegisterClientBridge(obaClient)
+	m.RegisterSessionBridge("sms", smsHandler.SessionStore)
+	m.RegisterSessionBridge("voice", voiceHandler.SessionStore)
+	smsHandler.SetMetrics(m)
+	voiceHandler.SetMetrics(m)
+
 	// Initialize health check system
 	healthManager := health.NewManager(
 		health.WithTimeout(10*time.Second),
@@ -244,6 +253,9 @@ func main() {
 		HashSalt: analyticsConfig.HashSalt,
 	}).Handler())
 
+	// Add Prometheus metrics middleware
+	r.Use(m.Middleware())
+
 	// Add health check middleware
 	r.Use(healthHandler.HealthMiddleware())
 	r.Use(healthHandler.HealthResponseMiddleware())
@@ -269,7 +281,7 @@ func main() {
 	})
 
 	// Setup comprehensive health check endpoints
-	healthHandler.SetupRoutes(r)
+	healthHandler.SetupRoutes(r, m.Handler())
 
 	r.POST("/sms", smsHandler.HandleSMS)
 	r.POST("/voice", voiceHandler.HandleVoiceStart)

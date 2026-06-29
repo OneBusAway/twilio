@@ -23,16 +23,16 @@ type sessionCollector struct {
 }
 
 func newSessionCollector(store string, src sessionSource) *sessionCollector {
-	labels := []string{"store"}
+	constLabels := prometheus.Labels{"store": store}
 	return &sessionCollector{
 		store:   store,
 		src:     src,
-		active:  prometheus.NewDesc("session_store_active_sessions", "Active sessions in the store.", labels, nil),
-		hits:    prometheus.NewDesc("session_store_cache_hits_total", "Session-store cache hits.", labels, nil),
-		misses:  prometheus.NewDesc("session_store_cache_misses_total", "Session-store cache misses.", labels, nil),
-		evicted: prometheus.NewDesc("session_store_evictions_total", "Sessions evicted.", labels, nil),
-		expired: prometheus.NewDesc("session_store_expired_total", "Sessions expired.", labels, nil),
-		created: prometheus.NewDesc("session_store_created_total", "Sessions created.", labels, nil),
+		active:  prometheus.NewDesc("session_store_active_sessions", "Active sessions in the store.", nil, constLabels),
+		hits:    prometheus.NewDesc("session_store_cache_hits_total", "Session-store cache hits.", nil, constLabels),
+		misses:  prometheus.NewDesc("session_store_cache_misses_total", "Session-store cache misses.", nil, constLabels),
+		evicted: prometheus.NewDesc("session_store_evictions_total", "Sessions evicted.", nil, constLabels),
+		expired: prometheus.NewDesc("session_store_expired_total", "Sessions expired.", nil, constLabels),
+		created: prometheus.NewDesc("session_store_created_total", "Sessions created.", nil, constLabels),
 	}
 }
 
@@ -50,12 +50,12 @@ func (c *sessionCollector) Collect(ch chan<- prometheus.Metric) {
 	if m == nil {
 		return
 	}
-	ch <- prometheus.MustNewConstMetric(c.active, prometheus.GaugeValue, float64(m.TotalSessions), c.store)
-	ch <- prometheus.MustNewConstMetric(c.hits, prometheus.CounterValue, float64(m.CacheHits), c.store)
-	ch <- prometheus.MustNewConstMetric(c.misses, prometheus.CounterValue, float64(m.CacheMisses), c.store)
-	ch <- prometheus.MustNewConstMetric(c.evicted, prometheus.CounterValue, float64(m.Evictions), c.store)
-	ch <- prometheus.MustNewConstMetric(c.expired, prometheus.CounterValue, float64(m.ExpiredSessions), c.store)
-	ch <- prometheus.MustNewConstMetric(c.created, prometheus.CounterValue, float64(m.CreatedSessions), c.store)
+	ch <- prometheus.MustNewConstMetric(c.active, prometheus.GaugeValue, float64(m.TotalSessions))
+	ch <- prometheus.MustNewConstMetric(c.hits, prometheus.CounterValue, float64(m.CacheHits))
+	ch <- prometheus.MustNewConstMetric(c.misses, prometheus.CounterValue, float64(m.CacheMisses))
+	ch <- prometheus.MustNewConstMetric(c.evicted, prometheus.CounterValue, float64(m.Evictions))
+	ch <- prometheus.MustNewConstMetric(c.expired, prometheus.CounterValue, float64(m.ExpiredSessions))
+	ch <- prometheus.MustNewConstMetric(c.created, prometheus.CounterValue, float64(m.CreatedSessions))
 }
 
 // RegisterSessionBridge registers a bridge for one session store, tagged with a

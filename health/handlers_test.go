@@ -24,7 +24,7 @@ func setupTestHandler() (*Handler, *gin.Engine) {
 
 	handler := NewHandler(manager)
 	router := gin.New()
-	handler.SetupRoutes(router)
+	handler.SetupRoutes(router, func(c *gin.Context) {})
 
 	return handler, router
 }
@@ -106,58 +106,16 @@ func TestDetailedHandler(t *testing.T) {
 	}
 }
 
-func TestMetricsHandler_JSON(t *testing.T) {
-	_, router := setupTestHandler()
+func TestMetricsRouteDelegatesToProvidedHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler := NewHandler(NewManager())
+	handler.SetupRoutes(router, func(c *gin.Context) { c.String(200, "stubbed") })
 
-	req, _ := http.NewRequest("GET", "/metrics", nil)
-	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	contentType := w.Header().Get("Content-Type")
-	if contentType != "application/json" {
-		t.Errorf("Expected JSON content type, got %s", contentType)
-	}
-
-	var metrics MetricsInfo
-	if err := json.Unmarshal(w.Body.Bytes(), &metrics); err != nil {
-		t.Fatalf("Failed to unmarshal metrics: %v", err)
-	}
-}
-
-func TestMetricsHandler_Prometheus(t *testing.T) {
-	_, router := setupTestHandler()
-
-	req, _ := http.NewRequest("GET", "/metrics", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	contentType := w.Header().Get("Content-Type")
-	expectedContentType := "text/plain; version=0.0.4; charset=utf-8"
-	if contentType != expectedContentType {
-		t.Errorf("Expected Prometheus content type %s, got %s", expectedContentType, contentType)
-	}
-
-	body := w.Body.String()
-	if body == "" {
-		t.Error("Expected non-empty Prometheus metrics")
-	}
-
-	// Check for expected Prometheus metric format
-	if !contains(body, "# HELP") {
-		t.Error("Expected Prometheus HELP comments")
-	}
-
-	if !contains(body, "# TYPE") {
-		t.Error("Expected Prometheus TYPE comments")
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	if w.Code != 200 || w.Body.String() != "stubbed" {
+		t.Fatalf("expected delegated handler, got %d %q", w.Code, w.Body.String())
 	}
 }
 
@@ -287,7 +245,7 @@ func TestHealthHandler_UnhealthyStatus(t *testing.T) {
 
 	handler := NewHandler(manager)
 	router := gin.New()
-	handler.SetupRoutes(router)
+	handler.SetupRoutes(router, func(c *gin.Context) {})
 
 	req, _ := http.NewRequest("GET", "/health/ready", nil)
 	w := httptest.NewRecorder()
@@ -321,7 +279,7 @@ func TestHealthHandler_DegradedStatus(t *testing.T) {
 
 	handler := NewHandler(manager)
 	router := gin.New()
-	handler.SetupRoutes(router)
+	handler.SetupRoutes(router, func(c *gin.Context) {})
 
 	req, _ := http.NewRequest("GET", "/health/ready", nil)
 	w := httptest.NewRecorder()
@@ -517,14 +475,4 @@ func TestConcurrentHealthRequests(t *testing.T) {
 	for i := 0; i < numRequests; i++ {
 		<-done
 	}
-}
-
-// Helper function to check if string contains substring
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

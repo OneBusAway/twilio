@@ -14,6 +14,7 @@ func TestSessionStore_NewSessionStore(t *testing.T) {
 
 	if store == nil {
 		t.Fatal("NewSessionStore returned nil")
+		return
 	}
 
 	if store.sessions == nil || store.lru == nil {
@@ -46,6 +47,7 @@ func TestSessionStore_DisambiguationSession_BasicOperations(t *testing.T) {
 	retrieved := store.GetDisambiguationSession(phoneNumber)
 	if retrieved == nil {
 		t.Fatal("Failed to get session")
+		return
 	}
 
 	if len(retrieved.StopOptions) != 1 {
@@ -79,6 +81,7 @@ func TestSessionStore_VoiceSession_BasicOperations(t *testing.T) {
 	retrieved := store.GetVoiceSession(phoneNumber)
 	if retrieved == nil {
 		t.Fatal("Failed to get voice session")
+		return
 	}
 
 	if retrieved.StopID != "1_75403" {
@@ -113,6 +116,7 @@ func TestSessionStore_SMSSession_BasicOperations(t *testing.T) {
 	retrieved := store.GetSMSSession(phoneNumber)
 	if retrieved == nil {
 		t.Fatal("Failed to get SMS session")
+		return
 	}
 
 	if retrieved.LastStopID != "1_75403" {

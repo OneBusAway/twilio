@@ -10,16 +10,15 @@ import (
 
 // Manager coordinates health checks and provides caching
 type Manager struct {
-	checkers         []HealthChecker
-	config           HealthConfig
-	cache            map[string]cacheEntry
-	cacheMutex       sync.RWMutex
-	startTime        time.Time
-	checkCount       int64
-	failureCount     int64
-	totalDuration    time.Duration
-	metricsCollector *MetricsCollector
-	mu               sync.RWMutex
+	checkers      []HealthChecker
+	config        HealthConfig
+	cache         map[string]cacheEntry
+	cacheMutex    sync.RWMutex
+	startTime     time.Time
+	checkCount    int64
+	failureCount  int64
+	totalDuration time.Duration
+	mu            sync.RWMutex
 }
 
 type cacheEntry struct {
@@ -42,11 +41,10 @@ func NewManager(options ...HealthOption) *Manager {
 	}
 
 	return &Manager{
-		checkers:         make([]HealthChecker, 0),
-		config:           config,
-		cache:            make(map[string]cacheEntry),
-		startTime:        time.Now(),
-		metricsCollector: NewMetricsCollector(),
+		checkers:  make([]HealthChecker, 0),
+		config:    config,
+		cache:     make(map[string]cacheEntry),
+		startTime: time.Now(),
 	}
 }
 
@@ -460,23 +458,6 @@ func (m *Manager) updateMetrics(results map[string]CheckResult, duration time.Du
 			m.failureCount++
 		}
 	}
-
-	// Update metrics collector if enabled
-	if m.metricsCollector != nil {
-		m.metricsCollector.UpdateMetrics(results, duration)
-	}
-}
-
-// GetMetrics returns current health check metrics
-func (m *Manager) GetMetrics() MetricsInfo {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if m.metricsCollector == nil {
-		return MetricsInfo{}
-	}
-
-	return m.metricsCollector.GetMetrics()
 }
 
 // ClearCache clears all cached health check results
