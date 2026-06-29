@@ -11,8 +11,7 @@ type sessionSource interface {
 }
 
 type sessionCollector struct {
-	store string
-	src   sessionSource
+	src sessionSource
 
 	active  *prometheus.Desc
 	hits    *prometheus.Desc
@@ -25,7 +24,6 @@ type sessionCollector struct {
 func newSessionCollector(store string, src sessionSource) *sessionCollector {
 	constLabels := prometheus.Labels{"store": store}
 	return &sessionCollector{
-		store:   store,
 		src:     src,
 		active:  prometheus.NewDesc("session_store_active_sessions", "Active sessions in the store.", nil, constLabels),
 		hits:    prometheus.NewDesc("session_store_cache_hits_total", "Session-store cache hits.", nil, constLabels),

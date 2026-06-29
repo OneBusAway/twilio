@@ -703,3 +703,50 @@ func TestSMSHandlerRecordsResolvedInteraction(t *testing.T) {
 		t.Errorf("expected resolved interaction:\n%s", w2.Body.String())
 	}
 }
+
+func TestSMSHandlerRecordsResolvedOnDisambiguationChoice(t *testing.T) {
+	_, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	stopOptions := []models.StopOption{
+		{
+			FullStopID:  "1_12345",
+			AgencyName:  "King County Metro",
+			StopName:    "Pine St & 3rd Ave",
+			DisplayText: "King County Metro: Pine St & 3rd Ave",
+		},
+		{
+			FullStopID:  "40_12345",
+			AgencyName:  "Sound Transit",
+			StopName:    "University Street Station",
+			DisplayText: "Sound Transit: University Street Station",
+		},
+	}
+	session := &models.DisambiguationSession{StopOptions: stopOptions}
+	err := h.SessionStore.SetDisambiguationSession("+12345678901", session)
+	assert.NoError(t, err)
+
+	mockResponse := createMockResponse("1_12345")
+	mockArrivals := createMockArrivals()
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_12345", 30).Return(mockResponse, nil)
+	mockClient.On("ProcessArrivals", mockResponse, 30).Return(mockArrivals)
+
+	// Build a fresh router attached to our metrics-instrumented handler.
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/sms", h.HandleSMS)
+
+	w := sendSMSRequest(router, "+12345678901", "1")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Scrape and assert the interaction counter.
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w2 := httptest.NewRecorder()
+	mr.ServeHTTP(w2, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(w2.Body.String(), `interactions_total{channel="sms",outcome="resolved"} 1`) {
+		t.Errorf("expected resolved interaction after disambiguation choice:\n%s", w2.Body.String())
+	}
+	mockClient.AssertExpectations(t)
+}

@@ -2,8 +2,6 @@ package metrics
 
 import "github.com/prometheus/client_golang/prometheus"
 
-// (fields below are added to the Metrics struct in metrics.go — see Step 4.)
-
 // RecordInteraction increments interactions_total. Nil-safe.
 func (m *Metrics) RecordInteraction(channel, outcome string) {
 	if m == nil || m.interactions == nil {

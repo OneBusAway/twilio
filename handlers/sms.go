@@ -252,6 +252,7 @@ func (h *SMSHandler) handleDisambiguationChoice(c *gin.Context, req models.Twili
 	smsSession := h.getOrCreateSMSSession(req.From)
 	smsSession.LastStopID = selectedStop.FullStopID
 	smsSession.ArrivalHorizonShownMinutes = 0
+	h.metrics.RecordInteraction("sms", "resolved")
 	// For SMS "Stop:" header we want the stop name (not "Agency: Stop").
 	h.getAndFormatArrivalsWithStopNameAndSession(c, req.From, selectedStop.FullStopID, selectedStop.StopName, smsSession)
 }

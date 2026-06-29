@@ -285,6 +285,7 @@ func (h *Handler) handleVoiceDisambiguationChoice(c *gin.Context, req models.Twi
 
 	log.Printf("User %s selected stop %s: %s", analytics.HashPhoneNumber(req.From, h.analyticsHashSalt), selectedStop.FullStopID, selectedStop.DisplayText)
 
+	h.metrics.RecordInteraction("voice", "resolved")
 	h.getAndFormatVoiceArrivalsWithSession(c, req.From, selectedStop.FullStopID, 0)
 }
 
