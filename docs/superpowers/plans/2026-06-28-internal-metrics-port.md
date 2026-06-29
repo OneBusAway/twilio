@@ -130,7 +130,7 @@ git commit -m "feat(metrics): add METRICS_PORT config helpers"
 Add to `health/handlers_test.go` (add `"strings"` to its imports):
 
 ```go
-func TestPublicLivenessHandlerOmitsInternals(t *testing.T) {
+func TestPublicProbesOmitInternals(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	manager := NewManager(WithTimeout(1*time.Second), WithSystemInfo(true))
 	manager.AddChecker(&MockHealthChecker{
@@ -140,33 +140,43 @@ func TestPublicLivenessHandlerOmitsInternals(t *testing.T) {
 	h := NewHandler(manager)
 	router := gin.New()
 	router.GET("/health", h.PublicLivenessHandler)
+	// Readiness runs the registered checker, so its full body would include the
+	// checker's "secret" metadata — proving the slim handler strips it.
+	router.GET("/health/ready", h.PublicReadinessHandler)
 
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, httptest.NewRequest("GET", "/health", nil))
+	for _, path := range []string{"/health", "/health/ready"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-	body := w.Body.String()
-	for _, leak := range []string{"system_info", "checks", "goroutines", "go_version", "metadata", "secret"} {
-		if strings.Contains(body, leak) {
-			t.Errorf("public probe leaked %q: %s", leak, body)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d", path, w.Code)
 		}
-	}
-	var resp map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp["status"] != "healthy" {
-		t.Errorf("status = %v, want healthy", resp["status"])
+		if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("%s: expected application/json, got %s", path, ct)
+		}
+		body := w.Body.String()
+		for _, leak := range []string{"system_info", "checks", "goroutines", "go_version", "metadata", "secret"} {
+			if strings.Contains(body, leak) {
+				t.Errorf("%s leaked %q: %s", path, leak, body)
+			}
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("%s unmarshal: %v", path, err)
+		}
+		if resp["status"] != "healthy" {
+			t.Errorf("%s status = %v, want healthy", path, resp["status"])
+		}
 	}
 }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `go test ./health -run TestPublicLivenessHandlerOmitsInternals -v`
+Run: `go test ./health -run TestPublicProbesOmitInternals -v`
 Expected: FAIL — `h.PublicLivenessHandler undefined`.
+
+(`json` is already imported in `handlers_test.go`; only `strings` needs adding.)
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -192,6 +202,7 @@ func (h *Handler) PublicLivenessHandler(c *gin.Context) {
 	defer cancel()
 	status := h.manager.CheckHealthLiveness(ctx).Status
 	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Content-Type", "application/json")
 	c.JSON(statusCode(status), gin.H{"status": status})
 }
 
@@ -203,9 +214,12 @@ func (h *Handler) PublicReadinessHandler(c *gin.Context) {
 	defer cancel()
 	status := h.manager.CheckHealthReadiness(ctx).Status
 	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Content-Type", "application/json")
 	c.JSON(statusCode(status), gin.H{"status": status})
 }
 ```
+
+(The explicit `Content-Type` matches the existing handlers and keeps `TestResponseHeaders` — which asserts an exact `application/json` — green; gin would otherwise append `; charset=utf-8`.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -313,6 +327,22 @@ In `TestMetricsRouteDelegatesToProvidedHandler`, change the setup line from `han
 	handler.SetupInternalRoutes(router, func(c *gin.Context) { c.String(200, "stubbed") })
 ```
 
+Re-point the two remaining direct `SetupRoutes` callers so they don't depend on the shim (it is removed in Task 4). In `TestHealthHandler_UnhealthyStatus` (~line 248) and `TestHealthHandler_DegradedStatus` (~line 282), both of which hit the public `GET /health/ready`, replace:
+
+```go
+	handler.SetupRoutes(router, func(c *gin.Context) {})
+```
+
+with:
+
+```go
+	handler.SetupPublicRoutes(router)
+```
+
+Their assertions (status code `503`/`200` and `HealthResponse.Status`) still hold: the slim body `{"status":"unhealthy"}` unmarshals into `HealthResponse.Status` correctly.
+
+After these edits, the only remaining `SetupRoutes` caller in the repo is `main.go` (via the shim), which Task 4 removes.
+
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `go test ./health -run 'TestPublicLivenessRouteIsSlim|TestPublicRouterRejectsInternalRoutes' -v`
@@ -385,13 +415,17 @@ git commit -m "feat(health): split routes into public and internal sets"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `main_test.go` (ensure imports include `net/http`, `net/http/httptest`, `github.com/gin-gonic/gin`, `oba-twilio/health`, `oba-twilio/metrics`):
+Add to `main_test.go`. `main_test.go` currently imports `net/http`, `net/http/httptest`, and `github.com/gin-gonic/gin`, but **not** `oba-twilio/health` or `oba-twilio/metrics` — add both, or Task 4 won't compile.
 
 ```go
 func TestBuildInternalEngineServesMetricsNotWebhooks(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	m := metrics.New()
-	hh := health.NewHandler(health.NewManager())
+	// A registered, healthy checker so /health/detailed reports 200 (an empty
+	// manager returns 503 because zero checks is treated as unhealthy).
+	mgr := health.NewManager()
+	mgr.AddChecker(&health.SystemHealthChecker{})
+	hh := health.NewHandler(mgr)
 	engine := buildInternalEngine(m.Handler(), hh)
 
 	// /metrics is served on the internal engine.
@@ -576,18 +610,21 @@ git commit -m "feat(metrics): serve metrics + sensitive health on internal :9119
 
 **Files:**
 - Modify: `health/handlers.go` (delete `HealthResponseMiddleware` and the `responseWriter` type it uses)
+- Modify: `health/handlers_test.go` (delete `TestHealthResponseMiddleware`, the only test caller)
 
 **Interfaces:**
-- Consumes: nothing. After Task 4 nothing references `HealthResponseMiddleware`; the `responseWriter` type is only used by it.
+- Consumes: nothing. After Task 4, `main.go` no longer wires `HealthResponseMiddleware`; the only remaining reference is its own test. The `responseWriter` type is used solely by it.
 
-- [ ] **Step 1: Confirm there are no remaining references**
+- [ ] **Step 1: Confirm the remaining references**
 
 Run: `grep -rn "HealthResponseMiddleware\|responseWriter" --include=*.go .`
-Expected: matches only the definitions in `health/handlers.go` (no callers in `main.go` or tests). If a caller remains, it was missed in Task 4 — remove it before continuing.
+Expected: matches in `health/handlers.go` (the `responseWriter` struct + `Write` method + `HealthResponseMiddleware` function) and exactly one test, `health/handlers_test.go` `TestHealthResponseMiddleware` (~line 376). There must be **no** caller in `main.go`; if one remains, it was missed in Task 4 — remove it before continuing.
 
-- [ ] **Step 2: Delete the dead code**
+- [ ] **Step 2: Delete the dead code and its test**
 
 In `health/handlers.go`, delete the `responseWriter` struct, its `Write` method, and the `HealthResponseMiddleware` function (`health/handlers.go:300-334`).
+
+In `health/handlers_test.go`, delete the `TestHealthResponseMiddleware` function (~lines 376-397).
 
 - [ ] **Step 3: Build and test**
 
@@ -602,7 +639,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add health/handlers.go
+git add health/handlers.go health/handlers_test.go
 git commit -m "refactor(health): remove dead HealthResponseMiddleware"
 ```
 
