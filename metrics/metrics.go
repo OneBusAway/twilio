@@ -10,7 +10,9 @@ import (
 
 // Metrics owns the Prometheus registry and all registered collectors.
 type Metrics struct {
-	reg *prometheus.Registry
+	reg          *prometheus.Registry
+	httpRequests *prometheus.CounterVec
+	httpDuration *prometheus.HistogramVec
 }
 
 // New creates a Metrics with a private registry and the standard Go runtime
@@ -21,7 +23,24 @@ func New() *Metrics {
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
-	return &Metrics{reg: reg}
+	m := &Metrics{reg: reg}
+	m.httpRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total HTTP requests by method, route template, and status code.",
+		},
+		[]string{"method", "route", "status"},
+	)
+	m.httpDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "HTTP request latency by method and route template.",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "route"},
+	)
+	reg.MustRegister(m.httpRequests, m.httpDuration)
+	return m
 }
 
 // Registry exposes the underlying registry (for tests and registration).
