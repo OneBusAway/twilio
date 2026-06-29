@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -40,6 +41,16 @@ func validateAPIKey(apiKey string) error {
 	return nil
 }
 
+// buildInternalEngine assembles the gin engine for the internal-only metrics
+// server: Prometheus metrics plus the sensitive health endpoints, and none of
+// the public webhook routes.
+func buildInternalEngine(metricsHandler gin.HandlerFunc, healthHandler *health.Handler) *gin.Engine {
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+	healthHandler.SetupInternalRoutes(engine, metricsHandler)
+	return engine
+}
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using environment variables")
@@ -48,6 +59,11 @@ func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
+	}
+
+	metricsPort := resolveMetricsPort(os.Getenv("METRICS_PORT"))
+	if metricsPortConflicts(metricsPort, port) {
+		log.Fatalf("METRICS_PORT (%s) must differ from PORT (%s)", metricsPort, port)
 	}
 
 	obaAPIKey := os.Getenv("ONEBUSAWAY_API_KEY")
@@ -245,6 +261,8 @@ func main() {
 	// Create health handler
 	healthHandler := health.NewHandler(healthManager)
 
+	metricsHandler := m.Handler()
+
 	r := gin.Default()
 
 	// Add analytics middleware
@@ -253,12 +271,11 @@ func main() {
 		HashSalt: analyticsConfig.HashSalt,
 	}).Handler())
 
-	// Add Prometheus metrics middleware
+	// Add Prometheus metrics middleware (public engine only)
 	r.Use(m.Middleware())
 
 	// Add health check middleware
 	r.Use(healthHandler.HealthMiddleware())
-	r.Use(healthHandler.HealthResponseMiddleware())
 
 	// Application info endpoint
 	r.GET("/", func(c *gin.Context) {
@@ -280,41 +297,62 @@ func main() {
 		c.JSON(200, response)
 	})
 
-	// Setup comprehensive health check endpoints
-	healthHandler.SetupRoutes(r, m.Handler())
+	// Public probes only; metrics + detailed health live on the internal server.
+	healthHandler.SetupPublicRoutes(r)
 
 	r.POST("/sms", smsHandler.HandleSMS)
 	r.POST("/voice", voiceHandler.HandleVoiceStart)
 	r.POST("/voice/find_stop", voiceHandler.HandleFindStop)
 	r.POST("/voice/menu_action", voiceHandler.HandleVoiceMenuAction)
 
-	log.Printf("Starting server on port %s", port)
+	internalEngine := buildInternalEngine(metricsHandler, healthHandler)
+
+	publicSrv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	internalSrv := &http.Server{
+		Addr:              ":" + metricsPort,
+		Handler:           internalEngine,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	log.Printf("Starting public server on port %s", port)
+	log.Printf("Starting internal metrics server on port %s", metricsPort)
 	log.Printf("OneBusAway API: %s", obaBaseURL)
-	log.Printf("Health check endpoints configured:")
-	log.Printf("  - GET /health (liveness probe)")
-	log.Printf("  - GET /health/ready (readiness probe)")
-	log.Printf("  - GET /health/detailed (comprehensive status)")
-	log.Printf("  - GET /metrics (Prometheus metrics)")
-	log.Printf("  - GET /health/stats (basic statistics)")
-	log.Printf("  - GET /health/config (configuration info)")
+	log.Printf("Public endpoints: GET / , POST /sms , POST /voice* , GET /health , GET /health/ready")
+	log.Printf("Internal endpoints (:%s): GET /metrics , GET /health/detailed , /health/stats , /health/config , /health/cache", metricsPort)
 
 	// Set up graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		if err := r.Run(":" + port); err != nil {
-			log.Fatal("Failed to start server:", err)
+		if err := publicSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal("Failed to start public server:", err)
+		}
+	}()
+	go func() {
+		if err := internalSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal("Failed to start metrics server:", err)
 		}
 	}()
 
 	// Wait for shutdown signal
 	<-sigChan
-	log.Println("Shutting down server...")
+	log.Println("Shutting down servers...")
 
 	// Graceful shutdown with timeout
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	if err := publicSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Public server shutdown error: %v", err)
+	}
+	if err := internalSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Metrics server shutdown error: %v", err)
+	}
 
 	// Flush and close analytics
 	log.Println("Flushing analytics...")

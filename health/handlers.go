@@ -270,13 +270,6 @@ func (h *Handler) SetupInternalRoutes(router *gin.Engine, metricsHandler gin.Han
 	}
 }
 
-// SetupRoutes is a temporary shim that keeps main.go compiling during the port
-// split. It is removed once main wires the dedicated internal server.
-func (h *Handler) SetupRoutes(router *gin.Engine, metricsHandler gin.HandlerFunc) {
-	h.SetupPublicRoutes(router)
-	h.SetupInternalRoutes(router, metricsHandler)
-}
-
 // HealthMiddleware provides middleware for automatic health monitoring
 func (h *Handler) HealthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
