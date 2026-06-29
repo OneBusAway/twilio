@@ -106,6 +106,9 @@ make fmt
 - Voice prompts, error messages, and user interface strings
 - Structured for easy addition of new languages
 
+**metrics/** - Prometheus instrumentation
+- Owns the private Prometheus registry, HTTP middleware (records `http_requests_total` / `http_request_duration_seconds`), and bridge collectors that surface OBA client and session-store counters at scrape time
+
 **models/** - Data structures and error definitions
 - `types.go` - Twilio requests and OneBusAway API response structures
 - `errors.go` - Custom error types and error handling
@@ -149,6 +152,7 @@ Environment file support via `.env` file in project root.
 - `POST /voice/find_stop` - Handle voice input/DTMF (Twilio webhook)
 - `GET /health` - Health check endpoint
 - `GET /` - Application info with coverage area status
+- `GET /metrics` - Prometheus metrics (client_golang)
 
 ## Testing Approach
 
