@@ -357,3 +357,27 @@ func parseEnvInt(name string, defaultValue int) int {
 	}
 	return parsed
 }
+
+const defaultMetricsPort = "9119"
+
+// resolveMetricsPort validates a METRICS_PORT value. It accepts an integer in
+// [1,65535] and returns it as a canonical string; empty, non-numeric, or
+// out-of-range input falls back to defaultMetricsPort with a logged warning.
+func resolveMetricsPort(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultMetricsPort
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed < 1 || parsed > 65535 {
+		log.Printf("Invalid METRICS_PORT=%q, using default %s", raw, defaultMetricsPort)
+		return defaultMetricsPort
+	}
+	return strconv.Itoa(parsed)
+}
+
+// metricsPortConflicts reports whether the internal metrics port collides with
+// the public server port. The two http.Servers cannot share a port.
+func metricsPortConflicts(metricsPort, mainPort string) bool {
+	return metricsPort == mainPort
+}
