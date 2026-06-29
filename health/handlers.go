@@ -386,3 +386,38 @@ type JSONError struct {
 	Message string    `json:"message,omitempty"`
 	Time    time.Time `json:"timestamp"`
 }
+
+// statusCode maps a health Status to the probe HTTP status code: healthy and
+// degraded are "up" (200); unhealthy is 503.
+func statusCode(s Status) int {
+	if s == StatusUnhealthy {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusOK
+}
+
+// PublicLivenessHandler is the internet-facing liveness probe. It runs the same
+// checks as HealthHandler to derive the status code but returns a status-only
+// body, so the public port never exposes SystemInfo, per-check Metadata, or
+// error strings.
+// GET /health
+func (h *Handler) PublicLivenessHandler(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	status := h.manager.CheckHealthLiveness(ctx).Status
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Content-Type", "application/json")
+	c.JSON(statusCode(status), gin.H{"status": status})
+}
+
+// PublicReadinessHandler is the internet-facing readiness probe — status-only
+// body, same rationale as PublicLivenessHandler.
+// GET /health/ready
+func (h *Handler) PublicReadinessHandler(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+	status := h.manager.CheckHealthReadiness(ctx).Status
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Content-Type", "application/json")
+	c.JSON(statusCode(status), gin.H{"status": status})
+}
