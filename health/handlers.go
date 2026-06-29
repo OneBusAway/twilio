@@ -243,28 +243,38 @@ func (h *Handler) CacheHandler(c *gin.Context) {
 	}
 }
 
-// SetupRoutes configures health check routes on a Gin router
-func (h *Handler) SetupRoutes(router *gin.Engine, metricsHandler gin.HandlerFunc) {
-	// Apply rate limiting to all health endpoints
+// SetupPublicRoutes registers the internet-facing endpoints: status-only
+// liveness and readiness probes, rate-limited. Metrics and sensitive health
+// detail are deliberately NOT registered here — see SetupInternalRoutes.
+func (h *Handler) SetupPublicRoutes(router *gin.Engine) {
 	rateLimited := router.Group("/")
 	rateLimited.Use(h.rateLimitMiddleware())
 
-	// Basic health check (liveness probe)
-	rateLimited.GET("/health", h.HealthHandler)
+	rateLimited.GET("/health", h.PublicLivenessHandler)
+	rateLimited.GET("/health/ready", h.PublicReadinessHandler)
+}
 
-	// Health check group for organized endpoints
-	healthGroup := rateLimited.Group("/health")
+// SetupInternalRoutes registers the endpoints that must only be reachable on the
+// internal metrics port: Prometheus metrics plus detailed/stats/config/cache.
+// No rate limiting — the port is private and the scraper is trusted.
+func (h *Handler) SetupInternalRoutes(router *gin.Engine, metricsHandler gin.HandlerFunc) {
+	router.GET("/metrics", metricsHandler)
+
+	healthGroup := router.Group("/health")
 	{
-		healthGroup.GET("/ready", h.ReadinessHandler)   // Readiness probe
-		healthGroup.GET("/detailed", h.DetailedHandler) // Detailed health info
-		healthGroup.GET("/stats", h.StatsHandler)       // Basic statistics
-		healthGroup.GET("/config", h.ConfigHandler)     // Configuration info
-		healthGroup.GET("/cache", h.CacheHandler)       // Cache status
-		healthGroup.DELETE("/cache", h.CacheHandler)    // Clear cache
+		healthGroup.GET("/detailed", h.DetailedHandler)
+		healthGroup.GET("/stats", h.StatsHandler)
+		healthGroup.GET("/config", h.ConfigHandler)
+		healthGroup.GET("/cache", h.CacheHandler)
+		healthGroup.DELETE("/cache", h.CacheHandler)
 	}
+}
 
-	// Metrics endpoint (Prometheus compatible) - also rate limited
-	rateLimited.GET("/metrics", metricsHandler)
+// SetupRoutes is a temporary shim that keeps main.go compiling during the port
+// split. It is removed once main wires the dedicated internal server.
+func (h *Handler) SetupRoutes(router *gin.Engine, metricsHandler gin.HandlerFunc) {
+	h.SetupPublicRoutes(router)
+	h.SetupInternalRoutes(router, metricsHandler)
 }
 
 // HealthMiddleware provides middleware for automatic health monitoring
