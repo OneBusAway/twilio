@@ -155,7 +155,9 @@ change with its own risk.)
   - `channel`: `sms` | `voice`.
   - `outcome`: `resolved` | `ambiguous` | `not_found` | `error`.
 - `stop_lookups_total{result,agency}` — counter.
-  - `result`: `resolved` | `ambiguous` | `not_found`.
+  - `result`: `resolved` | `ambiguous` | `not_found` | `error`. `error` (an
+    upstream/transport failure) is kept distinct from `not_found` (a genuinely
+    empty result) so the two can't be conflated on a dashboard.
   - `agency`: matched agency prefix (e.g. `1`, `40`, `29`) or `none`.
 
 The `agency` label is low-cardinality (a fixed set of known prefixes). If lookup
@@ -173,7 +175,7 @@ In `main.go`:
    - `m.RegisterClientBridge(obaClient)` — reads `client.GetMetrics()` +
      `CircuitBreakerState()`.
    - `m.RegisterSessionBridge("sms", smsHandler.SessionStore)` and
-     `m.RegisterSessionBridge("voice", voiceHandler.SessionStore())` — the
+     `m.RegisterSessionBridge("voice", voiceHandler.SessionStore)` — the
      stores actually in use (see "Multiple session stores" above). The
      health-checker store is not bridged.
 3. Inject `m` into handlers via a **setter**, mirroring the existing

@@ -275,11 +275,17 @@ var httpMethods = map[string]struct{}{
 }
 
 // sanitizeMethod bounds the method label to a fixed allow-list; anything else
-// (including arbitrary attacker-supplied verbs) collapses to "unknown".
+// (including arbitrary attacker-supplied verbs) collapses to "unknown". Real
+// HTTP methods are already uppercase, so the lookup happens before any
+// allocation; ToUpper only runs for the rare non-canonical verb.
 func sanitizeMethod(method string) string {
-	m := strings.ToUpper(method)
-	if _, ok := httpMethods[m]; ok {
-		return m
+	if _, ok := httpMethods[method]; ok {
+		return method
+	}
+	if m := strings.ToUpper(method); m != method {
+		if _, ok := httpMethods[m]; ok {
+			return m
+		}
 	}
 	return "unknown"
 }
@@ -642,12 +648,12 @@ session_store_active_sessions{store="sms"} 5
 }
 ```
 
-- [ ] **Step 3: Run to verify it fails**
+- [ ] **Step 2: Run to verify it fails**
 
 Run: `go test ./metrics/ -run TestSessionBridge -v`
 Expected: FAIL (`newSessionCollector` undefined).
 
-- [ ] **Step 4: Write `metrics/bridge_session.go`**
+- [ ] **Step 3: Write `metrics/bridge_session.go`**
 
 ```go
 package metrics
@@ -717,12 +723,12 @@ func (m *Metrics) RegisterSessionBridge(store string, src sessionSource) {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./metrics/ -v`
 Expected: PASS.
 
-- [ ] **Step 6: Gates + commit**
+- [ ] **Step 5: Gates + commit**
 
 ```bash
 make fmt && go vet ./metrics/ && go test ./metrics/...
