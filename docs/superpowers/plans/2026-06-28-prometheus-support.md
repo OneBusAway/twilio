@@ -447,21 +447,27 @@ import (
 	"oba-twilio/client"
 )
 
+// Store scalars, not a client.Metrics value: client.Metrics embeds a
+// sync.RWMutex, so storing/returning a stored value trips go vet's copylocks
+// analyzer (make vet is a required gate). Build a fresh literal in the method —
+// exactly what the real client.GetMetrics() does.
 type fakeClientSource struct {
-	m     client.Metrics
-	state int
+	hits, misses, calls, apiErrs, valErrs, cbOpen int64
+	state                                         int
 }
 
-func (f fakeClientSource) GetMetrics() client.Metrics { return f.m }
-func (f fakeClientSource) CircuitBreakerState() int   { return f.state }
+func (f fakeClientSource) GetMetrics() client.Metrics {
+	return client.Metrics{
+		CacheHits: f.hits, CacheMisses: f.misses,
+		APICallCount: f.calls, APIErrorCount: f.apiErrs,
+		ValidationErrors: f.valErrs, CircuitBreakerOpen: f.cbOpen,
+	}
+}
+func (f fakeClientSource) CircuitBreakerState() int { return f.state }
 
 func TestClientBridgeEmitsSeries(t *testing.T) {
 	src := fakeClientSource{
-		m: client.Metrics{
-			CacheHits: 7, CacheMisses: 3,
-			APICallCount: 10, APIErrorCount: 2,
-			ValidationErrors: 1, CircuitBreakerOpen: 4,
-		},
+		hits: 7, misses: 3, calls: 10, apiErrs: 2, valErrs: 1, cbOpen: 4,
 		state: 1,
 	}
 	reg := prometheus.NewRegistry()
@@ -584,32 +590,19 @@ git commit -m "feat(metrics): bridge OBA client counters + circuit-breaker state
 ### Task 4: Session-store bridge collector (+ handler store accessors)
 
 **Files:**
-- Modify: `handlers/voice.go` (add `SessionStore()` accessor on `VoiceHandler`)
 - Create: `metrics/bridge_session.go`
 - Test: `metrics/bridge_session_test.go`
 
 **Interfaces:**
-- Consumes: `common.ImprovedSessionStore.GetMetrics() *common.SessionMetrics` (existing); `smsHandler.SessionStore` (exported field, existing); new `voiceHandler.SessionStore()`.
+- Consumes: `common.ImprovedSessionStore.GetMetrics() *common.SessionMetrics` (existing); `smsHandler.SessionStore` (exported field, existing); `voiceHandler.SessionStore` (the embedded `*voice.Handler`'s exported `SessionStore` field, **promoted** through `VoiceHandler` — no accessor needed).
 - Produces:
   - `type sessionSource interface { GetMetrics() *common.SessionMetrics }`
   - `func (m *Metrics) RegisterSessionBridge(store string, src sessionSource)`
   - Series (all `{store}`-labelled): `session_store_active_sessions` (gauge), `session_store_cache_hits_total`, `session_store_cache_misses_total`, `session_store_evictions_total`, `session_store_expired_total`, `session_store_created_total` (counters).
 
-- [ ] **Step 1: Add the voice store accessor (no test needed in isolation; covered by Task 7 wiring)**
+> **Note:** `VoiceHandler` embeds `*voice.Handler` anonymously (`handlers/voice.go`), so its exported `SessionStore *common.SessionStore` field is promoted and reachable as `voiceHandler.SessionStore` directly. No accessor method is required (this task adds no handler code — only the collector).
 
-In `handlers/voice.go`, add:
-```go
-// SessionStore exposes the underlying session store for metrics bridging.
-func (h *VoiceHandler) SessionStore() *common.SessionStore {
-	if h.Handler == nil {
-		return nil
-	}
-	return h.Handler.SessionStore
-}
-```
-> Confirm `common` is already imported in `handlers/voice.go`; if not, add `"oba-twilio/handlers/common"`.
-
-- [ ] **Step 2: Write the failing bridge test**
+- [ ] **Step 1: Write the failing bridge test**
 
 Create `metrics/bridge_session_test.go`:
 ```go
@@ -732,8 +725,8 @@ Expected: PASS.
 - [ ] **Step 6: Gates + commit**
 
 ```bash
-make fmt && go vet ./metrics/ ./handlers/ && go test ./metrics/... ./handlers/...
-git add handlers/voice.go metrics/bridge_session.go metrics/bridge_session_test.go
+make fmt && go vet ./metrics/ && go test ./metrics/...
+git add metrics/bridge_session.go metrics/bridge_session_test.go
 git commit -m "feat(metrics): bridge session-store counters with store label"
 ```
 
@@ -743,6 +736,7 @@ git commit -m "feat(metrics): bridge session-store counters with store label"
 
 **Files:**
 - Create: `metrics/interactions.go`
+- Create: `handlers/common/agency.go` (shared `AgencyPrefix` helper, reused by voice in Task 6)
 - Modify: `handlers/sms.go` (add `metrics` field, `SetMetrics`, record calls)
 - Test: `metrics/interactions_test.go`
 - Test: `handlers/sms_test.go` (add instrumentation assertions)
@@ -868,7 +862,7 @@ func (h *SMSHandler) SetMetrics(m *metrics.Metrics) {
 	h.metrics = m
 }
 ```
-4. Instrument the outcome branches in the stop-lookup flow (the block at `handlers/sms.go:146-204`). Add `agency := agencyPrefix(stopID, matchingStops)` helper usage and record calls. Insert immediately after the existing analytics `TrackStopLookup` block and within each outcome branch:
+4. Instrument the outcome branches in the stop-lookup flow (the block at `handlers/sms.go:146-204`). Insert record calls immediately after the existing analytics `Track*` calls within each outcome branch:
 
 After the `if err != nil {` block's analytics tracking, before `return`:
 ```go
@@ -883,97 +877,14 @@ In the `if len(matchingStops) == 0 {` branch, before `return`:
 In the `if len(matchingStops) > 1 {` branch, before its `return` (after the disambiguation tracking):
 ```go
 		h.metrics.RecordInteraction("sms", "ambiguous")
-		h.metrics.RecordStopLookup("ambiguous", agencyPrefix(matchingStops[0].FullStopID))
+		h.metrics.RecordStopLookup("ambiguous", common.AgencyPrefix(matchingStops[0].FullStopID))
 ```
 At the single-stop path (after the `if len(matchingStops) > 1` block, before calling `getAndFormatArrivals...`):
 ```go
 	h.metrics.RecordInteraction("sms", "resolved")
-	h.metrics.RecordStopLookup("resolved", agencyPrefix(matchingStops[0].FullStopID))
+	h.metrics.RecordStopLookup("resolved", common.AgencyPrefix(matchingStops[0].FullStopID))
 ```
-5. Add the helper (in `handlers/sms.go` or a shared `handlers/common` file — keep it in `sms.go` for now):
-```go
-// agencyPrefix extracts the agency prefix from a full stop ID like "1_75403"
-// → "1". Returns "none" when no prefix is present.
-func agencyPrefix(fullStopID string) string {
-	if i := strings.Index(fullStopID, "_"); i > 0 {
-		return fullStopID[:i]
-	}
-	return "none"
-}
-```
-> Confirm `strings` is imported in `handlers/sms.go`; it is used elsewhere, but verify.
-
-- [ ] **Step 7: Write the failing handler instrumentation test**
-
-Add to `handlers/sms_test.go` a test that drives a known stop ID through the handler with a mock OBA client returning multiple stops, sets metrics via `SetMetrics(metrics.New())`, and asserts the counter incremented. Use the existing mock-client test scaffolding in that file as the template (match its mock type and request-construction helpers):
-```go
-func TestSMSHandlerRecordsResolvedInteraction(t *testing.T) {
-	m := metrics.New()
-	h := newTestSMSHandler(t) // existing helper; adjust to match the file
-	h.SetMetrics(m)
-	// ... drive a single-match stop lookup through h.HandleSMS using the
-	// file's existing mock OBA client returning exactly one matching stop ...
-
-	if got := testutil.ToFloat64(m /* interactions vec via a small exported getter or scrape */); got != 1 {
-		t.Errorf("expected one resolved interaction, got %v", got)
-	}
-}
-```
-> If the metrics vectors are unexported, assert by scraping: build a gin router with `m.Handler()` at `/metrics` and check the body contains `interactions_total{channel="sms",outcome="resolved"} 1`. Prefer the scrape approach to avoid exporting internals. Mirror whatever mock/request helpers `handlers/sms_test.go` already defines; do not invent new ones.
-
-- [ ] **Step 8: Run to verify it fails, then passes**
-
-Run: `go test ./handlers/ -run TestSMSHandlerRecords -v`
-Expected: FAIL first (no record call / wiring), then PASS after Step 6 is complete.
-
-- [ ] **Step 9: Gates + commit**
-
-```bash
-make fmt && go vet ./... && go test ./metrics/... ./handlers/...
-git add metrics/interactions.go metrics/metrics.go metrics/interactions_test.go handlers/sms.go handlers/sms_test.go
-git commit -m "feat(metrics): record SMS interactions and stop lookups"
-```
-
----
-
-### Task 6: Instrument the voice handler
-
-**Files:**
-- Modify: `handlers/voice.go` (add `SetMetrics` delegating to inner handler)
-- Modify: `handlers/voice/handler.go` (add `metrics` field + `SetMetrics`)
-- Modify: `handlers/voice/find_stop.go` (record calls at outcome branches)
-- Test: `handlers/voice/find_stop_test.go` (add instrumentation assertion)
-
-**Interfaces:**
-- Consumes: `metrics.RecordInteraction`, `metrics.RecordStopLookup`, `agencyPrefix` (exported from `common` if shared — see note).
-- Produces: voice handler records `interactions_total{channel="voice",...}` and `stop_lookups_total`.
-
-- [ ] **Step 1: Add `metrics` field + setter to the inner voice handler**
-
-In `handlers/voice/handler.go`:
-1. Add import `"oba-twilio/metrics"`.
-2. Add field `metrics *metrics.Metrics` to the inner `Handler` struct.
-3. Add:
-```go
-func (h *Handler) SetMetrics(m *metrics.Metrics) { h.metrics = m }
-```
-
-- [ ] **Step 2: Delegate from the wrapper in `handlers/voice.go`**
-
-```go
-// SetMetrics attaches the Prometheus metrics holder to the inner handler.
-func (h *VoiceHandler) SetMetrics(m *metrics.Metrics) {
-	if h.Handler != nil {
-		h.Handler.SetMetrics(m)
-	}
-}
-```
-> Add import `"oba-twilio/metrics"` to `handlers/voice.go`.
-
-- [ ] **Step 3: Share `agencyPrefix`**
-
-Move `agencyPrefix` from `handlers/sms.go` to `handlers/common/` as an exported helper to avoid duplication:
-- Create `handlers/common/agency.go`:
+5. Create the shared helper `handlers/common/agency.go` (used by both SMS and voice handlers — defined once here, reused in Task 6):
 ```go
 package common
 
@@ -988,31 +899,132 @@ func AgencyPrefix(fullStopID string) string {
 	return "none"
 }
 ```
-- In `handlers/sms.go`, delete the local `agencyPrefix` func and replace its call sites with `common.AgencyPrefix(...)`.
+> `handlers/common` is already imported in `handlers/sms.go` (the `SessionStore`
+> field type is `*common.SessionStore`), so `common.AgencyPrefix` needs no new
+> import there.
 
-- [ ] **Step 4: Record at voice outcome branches in `handlers/voice/find_stop.go`**
+- [ ] **Step 7: Write the failing handler instrumentation test**
 
-Locate the lookup-result branches (mirror SMS: error / zero / multiple / single — the existing analytics `Track*` calls mark these sites). Add beside each:
+Add to `handlers/sms_test.go` a test using the file's **existing** scaffolding —
+`setupSMSTestRouter() (*gin.Engine, *MockOneBusAwayClientSMS, *SMSHandler)`, with
+response/arrival builders `createMockResponse` / `createMockArrivals` and mock
+type `MockOneBusAwayClientSMS`. Attach metrics via `SetMetrics`, drive a
+single-match lookup, and assert via **scrape** (avoids exporting the counter
+vectors):
+```go
+func TestSMSHandlerRecordsResolvedInteraction(t *testing.T) {
+	router, mockClient, h := setupSMSTestRouter()
+	m := metrics.New()
+	h.SetMetrics(m)
+
+	// Configure mockClient so FindAllMatchingStops returns exactly one stop and
+	// arrivals resolve — copy the single-match setup from the existing
+	// "single stop" test in this file (createMockResponse/createMockArrivals).
+	// ... post an SMS with a numeric stop ID through `router` ...
+
+	// Scrape and assert the interaction counter.
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w := httptest.NewRecorder()
+	mr.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(w.Body.String(), `interactions_total{channel="sms",outcome="resolved"} 1`) {
+		t.Errorf("expected resolved interaction:\n%s", w.Body.String())
+	}
+}
+```
+> Mirror the single-match request/mock setup from the existing passing SMS test in this file (do not invent new mock helpers). Add imports `net/http/httptest`, `strings`, and `oba-twilio/metrics` to the test file if not present.
+
+- [ ] **Step 8: Run to verify it fails, then passes**
+
+Run: `go test ./handlers/ -run TestSMSHandlerRecords -v`
+Expected: FAIL first (no record call / wiring), then PASS after Step 6 is complete.
+
+- [ ] **Step 9: Gates + commit**
+
+```bash
+make fmt && go vet ./... && go test ./metrics/... ./handlers/...
+git add metrics/interactions.go metrics/metrics.go metrics/interactions_test.go handlers/common/agency.go handlers/sms.go handlers/sms_test.go
+git commit -m "feat(metrics): record SMS interactions and stop lookups"
+```
+
+---
+
+### Task 6: Instrument the voice handler
+
+**Files:**
+- Modify: `handlers/voice/handler.go` (add `metrics` field + `SetMetrics`)
+- Modify: `handlers/voice/find_stop.go` (record calls at outcome branches)
+- Test: `handlers/voice/find_stop_test.go` (add instrumentation assertion)
+
+> `handlers/common/agency.go` (`AgencyPrefix`) was created in Task 5 — reuse it; do not recreate it.
+
+**Interfaces:**
+- Consumes: `metrics.RecordInteraction`, `metrics.RecordStopLookup`, `common.AgencyPrefix` (from Task 5).
+- Produces: voice handler records `interactions_total{channel="voice",...}` and `stop_lookups_total`.
+
+- [ ] **Step 1: Add `metrics` field + setter to the inner voice handler**
+
+In `handlers/voice/handler.go`:
+1. Add import `"oba-twilio/metrics"`.
+2. Add field `metrics *metrics.Metrics` to the inner `Handler` struct.
+3. Add:
+```go
+func (h *Handler) SetMetrics(m *metrics.Metrics) { h.metrics = m }
+```
+> No wrapper delegation is needed: `VoiceHandler` embeds `*voice.Handler`
+> anonymously, so `SetMetrics` is **promoted** — `voiceHandler.SetMetrics(m)`
+> (Task 7) calls this method directly.
+
+- [ ] **Step 2: Record at voice outcome branches in `handlers/voice/find_stop.go`**
+
+The lookup-result branches live in `respondForStopID`; the result slice is named
+**`matchingStops`** (from `FindAllMatchingStops`). The four sites, confirmed by
+the review: error (~line 143), zero matches (~line 149), multiple →
+`respondVoiceStopDisambiguation` (~line 159), single (~line 164). Add beside each
+(after the existing analytics `Track*` calls):
 - error path: `h.metrics.RecordInteraction("voice", "error")` + `h.metrics.RecordStopLookup("not_found", "none")`
 - no matches: `h.metrics.RecordInteraction("voice", "not_found")` + `h.metrics.RecordStopLookup("not_found", "none")`
-- multiple (disambiguation): `h.metrics.RecordInteraction("voice", "ambiguous")` + `h.metrics.RecordStopLookup("ambiguous", common.AgencyPrefix(stops[0].FullStopID))`
-- single: `h.metrics.RecordInteraction("voice", "resolved")` + `h.metrics.RecordStopLookup("resolved", common.AgencyPrefix(stops[0].FullStopID))`
-> Confirm the slice variable name in `find_stop.go` (grep `FindAllMatchingStops`) and the `common` import.
+- multiple (disambiguation): `h.metrics.RecordInteraction("voice", "ambiguous")` + `h.metrics.RecordStopLookup("ambiguous", common.AgencyPrefix(matchingStops[0].FullStopID))`
+- single: `h.metrics.RecordInteraction("voice", "resolved")` + `h.metrics.RecordStopLookup("resolved", common.AgencyPrefix(matchingStops[0].FullStopID))`
+> Confirm `"oba-twilio/handlers/common"` is imported in `find_stop.go` (it uses `common` types already); add if missing.
 
-- [ ] **Step 5: Write the failing instrumentation test**
+- [ ] **Step 3: Write the failing instrumentation test**
 
-In `handlers/voice/find_stop_test.go`, mirror the file's existing mock setup; set `h.SetMetrics(metrics.New())`, drive a single-match lookup, and assert via scrape (router with `m.Handler()`) that the body contains `interactions_total{channel="voice",outcome="resolved"} 1`.
+In `handlers/voice/find_stop_test.go`, use the file's **existing** scaffolding —
+`setupFindStopHandler() (*gin.Engine, *mockOBAClient, *Handler)` and the
+single-stop helper `expectSingleStopArrivals(mockClient, digits, fullStopID, route)`.
+`SetMetrics` is on the inner `*Handler` returned by `setupFindStopHandler`, so set
+it directly; drive a single-match lookup, then assert via scrape:
+```go
+func TestFindStopRecordsResolvedInteraction(t *testing.T) {
+	router, mockClient, h := setupFindStopHandler()
+	m := metrics.New()
+	h.SetMetrics(m)
 
-- [ ] **Step 6: Run to verify fail → pass**
+	expectSingleStopArrivals(mockClient, "75403", "1_75403", "44")
+	// ... POST the DTMF digits through `router` as the existing single-stop test does ...
+
+	mr := gin.New()
+	mr.GET("/metrics", m.Handler())
+	w := httptest.NewRecorder()
+	mr.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(w.Body.String(), `interactions_total{channel="voice",outcome="resolved"} 1`) {
+		t.Errorf("expected resolved voice interaction:\n%s", w.Body.String())
+	}
+}
+```
+> Add imports `net/http/httptest`, `strings`, and `oba-twilio/metrics` if not present. Mirror the existing single-stop test's request construction.
+
+- [ ] **Step 4: Run to verify fail → pass**
 
 Run: `go test ./handlers/voice/ -run Record -v`
 Expected: FAIL first, PASS after wiring.
 
-- [ ] **Step 7: Gates + commit**
+- [ ] **Step 5: Gates + commit**
 
 ```bash
 make fmt && go vet ./... && go test ./handlers/...
-git add handlers/voice.go handlers/voice/handler.go handlers/voice/find_stop.go handlers/voice/find_stop_test.go handlers/common/agency.go handlers/sms.go
+git add handlers/voice/handler.go handlers/voice/find_stop.go handlers/voice/find_stop_test.go
 git commit -m "feat(metrics): record voice interactions and stop lookups"
 ```
 
@@ -1023,10 +1035,11 @@ git commit -m "feat(metrics): record voice interactions and stop lookups"
 **Files:**
 - Modify: `main.go` (construct `metrics.New()`, middleware, bridges, `SetMetrics`, pass handler to `SetupRoutes`)
 - Modify: `health/handlers.go` (drop `MetricsHandler` body; `SetupRoutes` takes a `gin.HandlerFunc`; serve it on the rate-limited group)
-- Modify: `health/metrics.go` (delete `formatPrometheusMetrics`, `formatMetricLine`, `GetPrometheusMetrics`, `MetricsCollector` if no longer referenced)
-- Modify: `health/manager.go` (remove `metricsCollector` field/usage if unused after removal; keep `MetricsInfo`/`GetMetrics` only if still consumed)
-- Modify/Delete: `health/metrics_test.go` (delete or rewrite)
-- Modify: `health/handlers_test.go` (update the `Accept: application/json` / `MetricsInfo` assertion at ~line 126)
+- Modify: `health/metrics.go` (delete `formatPrometheusMetrics`, `formatMetricLine`, `GetPrometheusMetrics`, `MetricsCollector` + its methods)
+- Modify: `health/manager.go` (remove `metricsCollector` field at line 21, its init at line 49, the `UpdateMetrics` call block at lines 464-467, and the `Manager.GetMetrics` method at lines 470-480)
+- Modify: `health/types.go` (delete `MetricsInfo` at line 101 — unused once `Manager.GetMetrics` is gone)
+- Delete/Modify: `health/metrics_test.go` (built entirely on removed symbols — delete it)
+- Modify: `health/handlers_test.go` (fix **three** `SetupRoutes` callers at lines 27, 290, 324; delete **both** metrics tests `TestMetricsHandler_JSON` line 109 and `TestMetricsHandler_Prometheus` line 132)
 
 **Interfaces:**
 - Consumes: everything produced in Tasks 1–6.
@@ -1044,9 +1057,34 @@ Replace the existing `rateLimited.GET("/metrics", h.MetricsHandler)` with:
 ```
 Delete the `MetricsHandler` method (lines ~186-203).
 
-- [ ] **Step 2: Remove the hand-rolled formatter from `health/metrics.go`**
+- [ ] **Step 2: Remove the hand-rolled formatter and collector**
 
-Delete `GetPrometheusMetrics`, `formatPrometheusMetrics`, and `formatMetricLine`. Then run `grep -rn "MetricsCollector\|MetricsInfo\|GetPrometheusMetrics\|formatPrometheusMetrics\|UpdateMetrics\|metricsCollector" health/` to find remaining references. Delete `MetricsCollector` and its methods, and the `metricsCollector` field + calls in `health/manager.go`, **only if** nothing outside the deleted code (and outside tests) references them. Keep `MetricsInfo`/`Manager.GetMetrics` only if another non-test caller remains (per spec, they are consumed only by the removed handler — expect to delete them).
+In `health/metrics.go`: delete `GetPrometheusMetrics`, `formatPrometheusMetrics`, `formatMetricLine`, the `MetricsCollector` type, and all its methods (`NewMetricsCollector`, `UpdateMetrics`, `GetMetrics`, the `Increment*`/`Update*` helpers).
+
+In `health/manager.go`, make these exact edits:
+- Delete the `metricsCollector *MetricsCollector` field (line 21).
+- Delete the `metricsCollector: NewMetricsCollector(),` initializer (line 49).
+- In `updateMetrics`, delete the trailing block (lines 464-467) so it ends after the failure-count loop:
+```go
+	m.checkCount++
+	m.totalDuration += duration
+
+	for _, result := range results {
+		if result.Status != StatusHealthy {
+			m.failureCount++
+		}
+	}
+}
+```
+- Delete the entire `Manager.GetMetrics` method (lines 470-480).
+
+In `health/types.go`: delete the `MetricsInfo` struct (line 101) and its doc comment (line 100) — it is unused once `Manager.GetMetrics` is gone.
+
+Then verify nothing dangles:
+```bash
+grep -rn "MetricsCollector\|MetricsInfo\|GetPrometheusMetrics\|formatPrometheusMetrics\|metricsCollector\|\.GetMetrics()" health/
+```
+Expected: the only `GetMetrics()` hits remaining are `c.client.GetMetrics()` (checkers.go) and `c.store.GetMetrics()` (manager.go) — different methods on the OBA client / session store, which stay. No `MetricsCollector`/`MetricsInfo`/`metricsCollector` references remain.
 
 - [ ] **Step 3: Update `main.go` wiring**
 
@@ -1057,7 +1095,7 @@ Delete `GetPrometheusMetrics`, `formatPrometheusMetrics`, and `formatMetricLine`
 	m := metrics.New()
 	m.RegisterClientBridge(obaClient)
 	m.RegisterSessionBridge("sms", smsHandler.SessionStore)
-	m.RegisterSessionBridge("voice", voiceHandler.SessionStore())
+	m.RegisterSessionBridge("voice", voiceHandler.SessionStore)
 	smsHandler.SetMetrics(m)
 	voiceHandler.SetMetrics(m)
 ```
@@ -1069,27 +1107,32 @@ Delete `GetPrometheusMetrics`, `formatPrometheusMetrics`, and `formatMetricLine`
 ```go
 	healthHandler.SetupRoutes(r, m.Handler())
 ```
-> `obaClient` already satisfies `clientSource` (has `GetMetrics()` and the new `CircuitBreakerState()`). `smsHandler.SessionStore` is the exported `*common.SessionStore` field; `voiceHandler.SessionStore()` is the accessor from Task 4.
+> `obaClient` already satisfies `clientSource` (has `GetMetrics()` and the new `CircuitBreakerState()`). `smsHandler.SessionStore` and `voiceHandler.SessionStore` are both the exported `*common.SessionStore` field (`voiceHandler` promotes it from the embedded `*voice.Handler`), and `*common.SessionStore` satisfies `sessionSource`. `voiceHandler.SetMetrics` is likewise promoted from the inner handler.
 
 - [ ] **Step 4: Fix the health tests**
 
-- `health/metrics_test.go`: delete the file if all its tests target removed symbols; otherwise rewrite to cover only surviving behavior.
-- `health/handlers_test.go` (~line 126): the test exercised `Accept: application/json` returning `MetricsInfo` JSON from `/metrics`. Replace it with a test that registers a stub `gin.HandlerFunc` via `SetupRoutes(r, stub)` and asserts the stub is served at `/metrics`:
+1. **Delete** `health/metrics_test.go` — every test in it targets removed symbols (`MetricsCollector`, `formatPrometheusMetrics`, `MetricsInfo`, the `Increment*`/`Update*` methods).
+2. In `health/handlers_test.go`, **update all three `SetupRoutes` callers** (lines 27, 290, 324) to pass a second argument — a no-op stub handler:
+```go
+	handler.SetupRoutes(router, func(c *gin.Context) {})
+```
+3. **Delete both** now-obsolete metrics tests in `health/handlers_test.go`: `TestMetricsHandler_JSON` (line 109, decodes `MetricsInfo` from the removed `Accept: application/json` branch) and `TestMetricsHandler_Prometheus` (line 132, asserts the removed hand-rolled exposition format).
+4. **Add** one delegation test proving the route serves the injected handler:
 ```go
 func TestMetricsRouteDelegatesToProvidedHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	h := NewHandler(/* existing manager constructor used elsewhere in this file */)
-	h.SetupRoutes(r, func(c *gin.Context) { c.String(200, "stubbed") })
+	router := gin.New()
+	handler := NewHandler(NewManager()) // match how this file constructs Handler/Manager
+	handler.SetupRoutes(router, func(c *gin.Context) { c.String(200, "stubbed") })
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
 	if w.Code != 200 || w.Body.String() != "stubbed" {
 		t.Fatalf("expected delegated handler, got %d %q", w.Code, w.Body.String())
 	}
 }
 ```
-> Match `NewHandler`/manager construction to how the rest of `health/handlers_test.go` builds them.
+> Match `NewHandler`/`NewManager` construction to how the rest of `health/handlers_test.go` builds them (grep `NewHandler(` in that file).
 
 - [ ] **Step 5: Build, run full suite**
 
@@ -1111,7 +1154,7 @@ Expected: standard exposition lines for runtime + app metrics present.
 
 ```bash
 make fmt && go vet ./... && golangci-lint run && go test ./...
-git add main.go health/handlers.go health/metrics.go health/manager.go health/handlers_test.go health/metrics_test.go
+git add -A main.go health/handlers.go health/metrics.go health/manager.go health/types.go health/handlers_test.go health/metrics_test.go
 git commit -m "feat(metrics): wire metrics package into server; remove hand-rolled formatter"
 ```
 
