@@ -112,54 +112,6 @@ func (h *Handler) rateLimitMiddleware() gin.HandlerFunc {
 	}
 }
 
-// HealthHandler handles basic health check requests (liveness probe)
-// GET /health
-func (h *Handler) HealthHandler(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
-
-	response := h.manager.CheckHealthLiveness(ctx)
-
-	// Determine HTTP status code based on health status
-	statusCode := http.StatusOK
-	switch response.Status {
-	case StatusHealthy:
-		statusCode = http.StatusOK
-	case StatusDegraded:
-		statusCode = http.StatusOK // Still considered "alive" for liveness probes
-	case StatusUnhealthy:
-		statusCode = http.StatusServiceUnavailable
-	}
-
-	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-	c.Header("Content-Type", "application/json")
-	c.JSON(statusCode, response)
-}
-
-// ReadinessHandler handles readiness check requests (readiness probe)
-// GET /health/ready
-func (h *Handler) ReadinessHandler(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
-	defer cancel()
-
-	response := h.manager.CheckHealthReadiness(ctx)
-
-	// Determine HTTP status code based on health status
-	statusCode := http.StatusOK
-	switch response.Status {
-	case StatusHealthy:
-		statusCode = http.StatusOK
-	case StatusDegraded:
-		statusCode = http.StatusOK // Still ready to serve traffic with degraded performance
-	case StatusUnhealthy:
-		statusCode = http.StatusServiceUnavailable
-	}
-
-	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-	c.Header("Content-Type", "application/json")
-	c.JSON(statusCode, response)
-}
-
 // DetailedHandler handles detailed health check requests
 // GET /health/detailed
 func (h *Handler) DetailedHandler(c *gin.Context) {
@@ -243,28 +195,31 @@ func (h *Handler) CacheHandler(c *gin.Context) {
 	}
 }
 
-// SetupRoutes configures health check routes on a Gin router
-func (h *Handler) SetupRoutes(router *gin.Engine, metricsHandler gin.HandlerFunc) {
-	// Apply rate limiting to all health endpoints
+// SetupPublicRoutes registers the internet-facing endpoints: status-only
+// liveness and readiness probes, rate-limited. Metrics and sensitive health
+// detail are deliberately NOT registered here — see SetupInternalRoutes.
+func (h *Handler) SetupPublicRoutes(router *gin.Engine) {
 	rateLimited := router.Group("/")
 	rateLimited.Use(h.rateLimitMiddleware())
 
-	// Basic health check (liveness probe)
-	rateLimited.GET("/health", h.HealthHandler)
+	rateLimited.GET("/health", h.PublicLivenessHandler)
+	rateLimited.GET("/health/ready", h.PublicReadinessHandler)
+}
 
-	// Health check group for organized endpoints
-	healthGroup := rateLimited.Group("/health")
+// SetupInternalRoutes registers the endpoints that must only be reachable on the
+// internal metrics port: Prometheus metrics plus detailed/stats/config/cache.
+// No rate limiting — the port is private and the scraper is trusted.
+func (h *Handler) SetupInternalRoutes(router *gin.Engine, metricsHandler gin.HandlerFunc) {
+	router.GET("/metrics", metricsHandler)
+
+	healthGroup := router.Group("/health")
 	{
-		healthGroup.GET("/ready", h.ReadinessHandler)   // Readiness probe
-		healthGroup.GET("/detailed", h.DetailedHandler) // Detailed health info
-		healthGroup.GET("/stats", h.StatsHandler)       // Basic statistics
-		healthGroup.GET("/config", h.ConfigHandler)     // Configuration info
-		healthGroup.GET("/cache", h.CacheHandler)       // Cache status
-		healthGroup.DELETE("/cache", h.CacheHandler)    // Clear cache
+		healthGroup.GET("/detailed", h.DetailedHandler)
+		healthGroup.GET("/stats", h.StatsHandler)
+		healthGroup.GET("/config", h.ConfigHandler)
+		healthGroup.GET("/cache", h.CacheHandler)
+		healthGroup.DELETE("/cache", h.CacheHandler)
 	}
-
-	// Metrics endpoint (Prometheus compatible) - also rate limited
-	rateLimited.GET("/metrics", metricsHandler)
 }
 
 // HealthMiddleware provides middleware for automatic health monitoring
@@ -292,43 +247,6 @@ func (h *Handler) HealthMiddleware() gin.HandlerFunc {
 				//     c.Request.Method, c.Request.URL.Path, duration, statusCode)
 				_ = statusCode // Avoid unused variable
 			}
-		}
-	}
-}
-
-// Custom response writer to capture response data
-type responseWriter struct {
-	gin.ResponseWriter
-	body []byte
-}
-
-func (w *responseWriter) Write(data []byte) (int, error) {
-	w.body = append(w.body, data...)
-	return w.ResponseWriter.Write(data)
-}
-
-// HealthResponseMiddleware captures response data for health monitoring
-func (h *Handler) HealthResponseMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Create custom response writer
-		writer := &responseWriter{
-			ResponseWriter: c.Writer,
-			body:           make([]byte, 0),
-		}
-		c.Writer = writer
-
-		// Process request
-		c.Next()
-
-		// Monitor response for health indicators
-		statusCode := c.Writer.Status()
-		if statusCode >= 500 {
-			// Server error - could indicate health issues
-			// In a real implementation, you might want to:
-			// - Increment error counters
-			// - Trigger alerts
-			// - Log detailed error information
-			_ = statusCode // Placeholder to satisfy linter
 		}
 	}
 }
@@ -385,4 +303,39 @@ type JSONError struct {
 	Error   string    `json:"error"`
 	Message string    `json:"message,omitempty"`
 	Time    time.Time `json:"timestamp"`
+}
+
+// statusCode maps a health Status to the probe HTTP status code: StatusUnhealthy
+// is 503; everything else (healthy, degraded, or any future status) is 200.
+func statusCode(s Status) int {
+	if s == StatusUnhealthy {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusOK
+}
+
+// PublicLivenessHandler is the internet-facing liveness probe. It runs the
+// liveness checks to derive the status code but returns a status-only body, so
+// the public port never exposes SystemInfo, per-check Metadata, or error
+// strings.
+// GET /health
+func (h *Handler) PublicLivenessHandler(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	status := h.manager.CheckHealthLiveness(ctx).Status
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Content-Type", "application/json")
+	c.JSON(statusCode(status), gin.H{"status": status})
+}
+
+// PublicReadinessHandler is the internet-facing readiness probe — status-only
+// body, same rationale as PublicLivenessHandler.
+// GET /health/ready
+func (h *Handler) PublicReadinessHandler(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+	status := h.manager.CheckHealthReadiness(ctx).Status
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Content-Type", "application/json")
+	c.JSON(statusCode(status), gin.H{"status": status})
 }

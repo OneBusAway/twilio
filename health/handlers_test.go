@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,71 +14,82 @@ import (
 func setupTestHandler() (*Handler, *gin.Engine) {
 	gin.SetMode(gin.TestMode)
 
-	manager := NewManager(WithTimeout(1 * time.Second))
+	manager := NewManager(WithTimeout(1*time.Second), WithSystemInfo(true))
 	manager.AddChecker(&MockHealthChecker{
-		name: "test-checker",
-		result: CheckResult{
-			Status:  StatusHealthy,
-			Message: "Test is healthy",
-		},
+		name:   "test-checker",
+		result: CheckResult{Status: StatusHealthy, Message: "Test is healthy"},
 	})
 
 	handler := NewHandler(manager)
 	router := gin.New()
-	handler.SetupRoutes(router, func(c *gin.Context) {})
+	handler.SetupPublicRoutes(router)
+	handler.SetupInternalRoutes(router, func(c *gin.Context) {})
 
 	return handler, router
 }
 
-func TestHealthHandler(t *testing.T) {
+func TestPublicLivenessRouteIsSlim(t *testing.T) {
 	_, router := setupTestHandler()
 
-	req, _ := http.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/health", nil))
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Fatalf("expected 200, got %d", w.Code)
 	}
-
-	var response HealthResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
+	body := w.Body.String()
+	for _, leak := range []string{"checks", "system_info", "goroutines", "go_version", "metadata"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("public /health leaked %q: %s", leak, body)
+		}
 	}
-
-	if response.Status != StatusHealthy {
-		t.Errorf("Expected status healthy, got %s", response.Status)
-	}
-
-	if response.Checks == nil {
-		t.Error("Expected checks to be present")
-	}
-
-	// Check cache control headers
-	cacheControl := w.Header().Get("Cache-Control")
-	if cacheControl != "no-cache, no-store, must-revalidate" {
-		t.Errorf("Expected no-cache header, got %s", cacheControl)
+	if cc := w.Header().Get("Cache-Control"); cc != "no-cache, no-store, must-revalidate" {
+		t.Errorf("expected no-cache header, got %s", cc)
 	}
 }
 
-func TestReadinessHandler(t *testing.T) {
+func TestPublicReadinessRouteIsSlim(t *testing.T) {
 	_, router := setupTestHandler()
 
-	req, _ := http.NewRequest("GET", "/health/ready", nil)
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/health/ready", nil))
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Fatalf("expected 200, got %d", w.Code)
 	}
-
-	var response HealthResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
+	if strings.Contains(w.Body.String(), "system_info") {
+		t.Errorf("public /health/ready leaked system_info: %s", w.Body.String())
 	}
+}
 
-	if response.Status != StatusHealthy {
-		t.Errorf("Expected status healthy, got %s", response.Status)
+func TestPublicRouterRejectsInternalRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewHandler(NewManager())
+	public := gin.New()
+	h.SetupPublicRoutes(public)
+
+	for _, path := range []string{"/metrics", "/health/detailed", "/health/config", "/health/stats", "/health/cache"} {
+		w := httptest.NewRecorder()
+		public.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s should be 404 on the public router, got %d", path, w.Code)
+		}
+	}
+}
+
+func TestStatusCode(t *testing.T) {
+	cases := []struct {
+		status Status
+		want   int
+	}{
+		{StatusHealthy, http.StatusOK},
+		{StatusDegraded, http.StatusOK},
+		{StatusUnhealthy, http.StatusServiceUnavailable},
+	}
+	for _, c := range cases {
+		if got := statusCode(c.status); got != c.want {
+			t.Errorf("statusCode(%q) = %d, want %d", c.status, got, c.want)
+		}
 	}
 }
 
@@ -110,7 +122,7 @@ func TestMetricsRouteDelegatesToProvidedHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	handler := NewHandler(NewManager())
-	handler.SetupRoutes(router, func(c *gin.Context) { c.String(200, "stubbed") })
+	handler.SetupInternalRoutes(router, func(c *gin.Context) { c.String(200, "stubbed") })
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
@@ -245,7 +257,7 @@ func TestHealthHandler_UnhealthyStatus(t *testing.T) {
 
 	handler := NewHandler(manager)
 	router := gin.New()
-	handler.SetupRoutes(router, func(c *gin.Context) {})
+	handler.SetupPublicRoutes(router)
 
 	req, _ := http.NewRequest("GET", "/health/ready", nil)
 	w := httptest.NewRecorder()
@@ -279,7 +291,7 @@ func TestHealthHandler_DegradedStatus(t *testing.T) {
 
 	handler := NewHandler(manager)
 	router := gin.New()
-	handler.SetupRoutes(router, func(c *gin.Context) {})
+	handler.SetupPublicRoutes(router)
 
 	req, _ := http.NewRequest("GET", "/health/ready", nil)
 	w := httptest.NewRecorder()
@@ -373,29 +385,6 @@ func TestHealthMiddleware(t *testing.T) {
 	}
 }
 
-func TestHealthResponseMiddleware(t *testing.T) {
-	handler, _ := setupTestHandler()
-
-	router := gin.New()
-	router.Use(handler.HealthResponseMiddleware())
-	router.GET("/test", func(c *gin.Context) {
-		c.String(200, "test response")
-	})
-
-	req, _ := http.NewRequest("GET", "/test", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if body != "test response" {
-		t.Errorf("Expected 'test response', got %s", body)
-	}
-}
-
 func TestSetupMinimalRoutes(t *testing.T) {
 	handler, _ := setupTestHandler()
 
@@ -474,5 +463,45 @@ func TestConcurrentHealthRequests(t *testing.T) {
 	// Wait for all requests to complete
 	for i := 0; i < numRequests; i++ {
 		<-done
+	}
+}
+
+func TestPublicProbesOmitInternals(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	manager := NewManager(WithTimeout(1*time.Second), WithSystemInfo(true))
+	manager.AddChecker(&MockHealthChecker{
+		name:   "secret-checker",
+		result: CheckResult{Status: StatusHealthy, Message: "ok", Metadata: map[string]string{"secret": "x"}},
+	})
+	h := NewHandler(manager)
+	router := gin.New()
+	router.GET("/health", h.PublicLivenessHandler)
+	// Readiness runs the registered checker, so its full body would include the
+	// checker's "secret" metadata — proving the slim handler strips it.
+	router.GET("/health/ready", h.PublicReadinessHandler)
+
+	for _, path := range []string{"/health", "/health/ready"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d", path, w.Code)
+		}
+		if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("%s: expected application/json, got %s", path, ct)
+		}
+		body := w.Body.String()
+		for _, leak := range []string{"system_info", "checks", "goroutines", "go_version", "metadata", "secret"} {
+			if strings.Contains(body, leak) {
+				t.Errorf("%s leaked %q: %s", path, leak, body)
+			}
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("%s unmarshal: %v", path, err)
+		}
+		if resp["status"] != "healthy" {
+			t.Errorf("%s status = %v, want healthy", path, resp["status"])
+		}
 	}
 }

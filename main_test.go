@@ -16,7 +16,9 @@ import (
 
 	"oba-twilio/client"
 	"oba-twilio/handlers"
+	"oba-twilio/health"
 	"oba-twilio/localization"
+	"oba-twilio/metrics"
 	"oba-twilio/models"
 )
 
@@ -379,6 +381,38 @@ func TestTwiMLGeneration(t *testing.T) {
 	assert.Contains(t, body, "<?xml version=\"1.0\"")
 	assert.Contains(t, body, "<Response>")
 	assert.Contains(t, body, "</Response>")
+}
+
+func TestBuildInternalEngineServesMetricsNotWebhooks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := metrics.New()
+	// A registered, healthy checker so /health/detailed reports 200 (an empty
+	// manager returns 503 because zero checks is treated as unhealthy).
+	mgr := health.NewManager()
+	mgr.AddChecker(&health.SystemHealthChecker{})
+	hh := health.NewHandler(mgr)
+	engine := buildInternalEngine(m.Handler(), hh)
+
+	// /metrics is served on the internal engine.
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("/metrics: got %d, want 200", w.Code)
+	}
+
+	// Detailed health is internal-only and served here.
+	w = httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest("GET", "/health/detailed", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("/health/detailed: got %d, want 200", w.Code)
+	}
+
+	// Public webhooks are NOT on the internal engine.
+	w = httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest("POST", "/sms", nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("/sms on internal engine: got %d, want 404", w.Code)
+	}
 }
 
 func TestParseEnvInt(t *testing.T) {
