@@ -383,6 +383,15 @@ func (h *Handler) getAndFormatVoiceArrivalsWithSession(c *gin.Context, phoneNumb
 	// Create TwiML elements
 	var elements []twiml.Element
 
+	// Speak active service alerts before arrivals so a caller on a disrupted route hears
+	// why first. Empty => unchanged output.
+	if alertText := formatters.FormatVoiceAlerts(obaResp.ActiveSituations(), h.LocalizationManager, language); alertText != "" {
+		elements = append(elements, &twiml.VoiceSay{
+			Message:  alertText,
+			Language: language,
+		})
+	}
+
 	// Add arrivals message
 	arrivalsSay := &twiml.VoiceSay{
 		Message:  message,

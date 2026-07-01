@@ -138,6 +138,33 @@ func TestHandleFindStop_InvalidCallSidStillProceeds(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
+func TestHandleFindStop_SpeaksServiceAlert(t *testing.T) {
+	r, mockClient, _ := setupFindStopHandler()
+
+	stops := []models.StopOption{{FullStopID: "1_12345", StopName: "Test Stop"}}
+	resp := newArrivalsResponse("1_12345")
+	resp.CurrentTime = 1782940990927
+	resp.Data.References = models.OBAReferences{Situations: []models.RawSituation{{
+		ID:            "1_alert",
+		Summary:       models.NLString{Value: "Elevator outage at this station"},
+		ActiveWindows: []models.ActiveWindow{{From: 1776212160000, To: 1789383540000}},
+	}}}
+	mockClient.On("FindAllMatchingStops", "12345").Return(stops, nil)
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_12345", 30).Return(resp, nil)
+	mockClient.On("ProcessArrivals", resp, mock.Anything).Return([]models.Arrival{{RouteShortName: "8", MinutesUntilArrival: 5}})
+	mockClient.On("GetStopInfo", "1_12345").Return(&stops[0], nil)
+
+	w := postFindStop(r, "+14444444444", "12345")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Service alert")
+	assert.Contains(t, body, "Elevator outage")
+	// Alert is spoken before the arrivals line.
+	assert.Less(t, strings.Index(body, "Service alert"), strings.Index(body, "Route 8"))
+	mockClient.AssertExpectations(t)
+}
+
 func TestHandleFindStop_EmptyDigits(t *testing.T) {
 	r, _, _ := setupFindStopHandler()
 
