@@ -37,16 +37,23 @@ literals short and keyed, so this and future field additions won't break them. F
 
 **Files:**
 - Modify: `models/types.go` (replace the `OneBusAwayResponse` definition, lines 47-62)
+- Create: `models/situation.go` (type definitions only — see Step 1)
 - Modify (compiler-guided literal updates): `main_test.go`, `client/onebusaway_test.go`,
   `client/validation_test.go`, `handlers/sms_test.go`, `handlers/voice_menu_test.go`,
-  `handlers/sms_session_test.go`, `handlers/disambiguation_test.go`,
-  `handlers/voice/find_stop_test.go`
+  `handlers/sms_session_test.go`, `handlers/disambiguation_test.go`
+
+> The guaranteed break among handler tests is `createMockResponse` in
+> `handlers/sms_test.go:138-167` (it spells the anonymous `Data` struct). Files that only
+> set top-level fields or use field-assignment do **not** break — notably
+> `handlers/voice/find_stop_test.go:74` (`&models.OneBusAwayResponse{Code: 200}` then
+> `resp.Data.Entry.StopId = stopID`) needs no change. Trust the Step 3 compiler output over
+> this list; it is the authoritative set.
 
 **Interfaces:**
 - Produces: named types `OBAArrivalDeparture`, `OBAStopEntry`, `OBAReferences`,
-  `OBAResponseData`, and the reshaped `OneBusAwayResponse` (with `CurrentTime int64`).
-  Situation-specific fields are added in Task 2; here the types exist but reference no
-  situation types yet.
+  `OBAResponseData`, the reshaped `OneBusAwayResponse` (with `CurrentTime int64`), and the
+  situation *type definitions* `Situation`, `NLString`, `ActiveWindow`, `RawSituation`
+  (the `ActiveSituations()` method + filtering logic land in Task 2).
 
 - [ ] **Step 1: Replace the `OneBusAwayResponse` definition in `models/types.go`**
 
@@ -65,7 +72,7 @@ type OBAArrivalDeparture struct {
 	SituationIds []string `json:"situationIds"`
 }
 
-// OBAReferences holds objects referenced by the response (populated further in Task 2).
+// OBAReferences holds objects referenced by the response.
 type OBAReferences struct {
 	Situations []RawSituation `json:"situations"`
 }
@@ -92,18 +99,80 @@ type OneBusAwayResponse struct {
 }
 ```
 
-> Note: `RawSituation` is referenced here but defined in Task 2 (`models/situation.go`).
-> Because both are in package `models`, create a **temporary** placeholder so this task
-> compiles on its own: add `type RawSituation struct{}` at the bottom of `models/types.go`
-> now; Task 2 moves/replaces it in `models/situation.go`. (If executing Tasks 1+2 back to
-> back, you may instead define the real `RawSituation` now and skip the placeholder.)
+Then, in the **same step**, create `models/situation.go` with the *type definitions only*
+(this defines `RawSituation` referenced above, so Task 1 compiles with no placeholder;
+Task 2 adds the `ActiveSituations()` method + filtering logic to this same file):
 
-- [ ] **Step 2: Build to find every broken literal**
+```go
+package models
 
-Run: `go build ./... 2>&1 | head -40`
+import (
+	"bytes"
+	"encoding/json"
+)
+
+// Situation is a presentation-ready service alert derived from an OBA situation.
+type Situation struct {
+	ID          string
+	Summary     string
+	Description string
+	URL         string
+	Reason      string // e.g. MAINTENANCE (captured for future use)
+	Severity    string // e.g. severe, noImpact (captured for future use)
+}
+
+// NLString unmarshals an OBA NaturalLanguageString, which may arrive as an object
+// {"lang":"en","value":"..."} or as a bare JSON string "...".
+type NLString struct {
+	Value string
+}
+
+func (n *NLString) UnmarshalJSON(b []byte) error {
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		n.Value = ""
+		return nil
+	}
+	if trimmed[0] == '"' {
+		return json.Unmarshal(trimmed, &n.Value)
+	}
+	var obj struct {
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(trimmed, &obj); err != nil {
+		return err
+	}
+	n.Value = obj.Value
+	return nil
+}
+
+// ActiveWindow is a time range during which a situation is in effect (ms since epoch;
+// seconds tolerated via normalization in Task 2). Zero bound means unbounded on that side.
+type ActiveWindow struct {
+	From int64 `json:"from"`
+	To   int64 `json:"to"`
+}
+
+// RawSituation mirrors the OBA references.situations wire shape.
+type RawSituation struct {
+	ID            string         `json:"id"`
+	Reason        string         `json:"reason"`
+	Severity      string         `json:"severity"`
+	Summary       NLString       `json:"summary"`
+	Description   NLString       `json:"description"`
+	URL           NLString       `json:"url"`
+	ActiveWindows []ActiveWindow `json:"activeWindows"`
+}
+```
+
+- [ ] **Step 2: Compile tests to find every broken literal**
+
+Run: `go vet ./... 2>&1 | head -40`
+(Use `go vet`, not `go build ./...` — plain build skips `_test.go` files, and every broken
+literal lives in a test file.)
 Expected: FAIL — a list of `cannot use struct literal ... in ... field value` / `unknown
 field` errors, one per test literal that spelled the old anonymous `Data` struct
-(in the 8 files listed above; grep anchor: `grep -rn "OneBusAwayResponse{" --include="*.go" .`).
+(grep anchor: `grep -rn "OneBusAwayResponse{" --include="*.go" .`).
 
 - [ ] **Step 3: Rewrite each broken literal to the named keyed form**
 
@@ -142,7 +211,7 @@ Expected: PASS (same tests green as before the refactor).
 
 ```bash
 git add -A
-git commit -m "refactor(models): name OneBusAwayResponse nested types; add currentTime"
+git commit -m "refactor(models): name OneBusAwayResponse nested types; add situation types"
 ```
 
 ---
@@ -150,19 +219,15 @@ git commit -m "refactor(models): name OneBusAwayResponse nested types; add curre
 ### Task 2: Situation model + `ActiveSituations()` (TDD)
 
 **Files:**
-- Create: `models/situation.go`
+- Modify: `models/situation.go` (add the method + filtering helpers to the type-only file
+  created in Task 1)
 - Create: `models/situation_test.go`
-- Modify: `models/types.go` (remove the temporary `type RawSituation struct{}` placeholder
-  from Task 1 if you added one)
 
 **Interfaces:**
-- Consumes: `OneBusAwayResponse` / `OBAReferences.Situations []RawSituation` (Task 1).
-- Produces:
-  - `type Situation struct { ID, Summary, Description, URL, Reason, Severity string }`
-  - `type NLString struct { Value string }` (custom `UnmarshalJSON`; object-or-bare-string)
-  - `type ActiveWindow struct { From, To int64 }`
-  - `type RawSituation struct { ID, Reason, Severity string; Summary, Description, URL NLString; ActiveWindows []ActiveWindow }`
-  - `func (r *OneBusAwayResponse) ActiveSituations() []Situation`
+- Consumes: the situation *types* (`Situation`, `NLString`, `ActiveWindow`, `RawSituation`)
+  and `OBAReferences.Situations []RawSituation` — all defined in Task 1.
+- Produces: `func (r *OneBusAwayResponse) ActiveSituations() []Situation` (plus unexported
+  helpers `normalizeToMillis`, `RawSituation.isActiveAt`).
 
 - [ ] **Step 1: Write the failing test** — `models/situation_test.go`
 
@@ -285,72 +350,16 @@ func TestActiveSituations_MapsAllFields(t *testing.T) {
 - [ ] **Step 2: Run to verify failure**
 
 Run: `go test ./models/ -run TestActiveSituations -v 2>&1 | head -20`
-Expected: FAIL — `undefined: NLString` / `undefined: RawSituation` / `ActiveSituations`.
+Expected: FAIL — `r.ActiveSituations undefined (type *OneBusAwayResponse has no field or
+method ActiveSituations)`. (The `NLString`/`RawSituation` types already exist from Task 1,
+so the `TestNLString_*` tests will pass; only the `ActiveSituations` cases fail here.)
 
-- [ ] **Step 3: Implement** — `models/situation.go`
+- [ ] **Step 3: Implement** — append to the existing `models/situation.go`
+
+Add `"strings"` to the import block (it currently imports only `"bytes"` and
+`"encoding/json"`), then append these three declarations below `RawSituation`:
 
 ```go
-package models
-
-import (
-	"bytes"
-	"encoding/json"
-	"strings"
-)
-
-// Situation is a presentation-ready service alert derived from an OBA situation.
-type Situation struct {
-	ID          string
-	Summary     string
-	Description string
-	URL         string
-	Reason      string // e.g. MAINTENANCE (captured for future use)
-	Severity    string // e.g. severe, noImpact (captured for future use)
-}
-
-// NLString unmarshals an OBA NaturalLanguageString, which may arrive as an object
-// {"lang":"en","value":"..."} or as a bare JSON string "...".
-type NLString struct {
-	Value string
-}
-
-func (n *NLString) UnmarshalJSON(b []byte) error {
-	trimmed := bytes.TrimSpace(b)
-	if len(trimmed) == 0 || string(trimmed) == "null" {
-		n.Value = ""
-		return nil
-	}
-	if trimmed[0] == '"' {
-		return json.Unmarshal(trimmed, &n.Value)
-	}
-	var obj struct {
-		Value string `json:"value"`
-	}
-	if err := json.Unmarshal(trimmed, &obj); err != nil {
-		return err
-	}
-	n.Value = obj.Value
-	return nil
-}
-
-// ActiveWindow is a time range during which a situation is in effect (ms since epoch;
-// seconds tolerated via normalization). Zero bound means unbounded on that side.
-type ActiveWindow struct {
-	From int64 `json:"from"`
-	To   int64 `json:"to"`
-}
-
-// RawSituation mirrors the OBA references.situations wire shape.
-type RawSituation struct {
-	ID            string         `json:"id"`
-	Reason        string         `json:"reason"`
-	Severity      string         `json:"severity"`
-	Summary       NLString       `json:"summary"`
-	Description   NLString       `json:"description"`
-	URL           NLString       `json:"url"`
-	ActiveWindows []ActiveWindow `json:"activeWindows"`
-}
-
 // normalizeToMillis converts a possibly-seconds epoch to ms. Modern ms values are
 // >= 1e12; GTFS-RT-derived seconds are < 1e12. Zero stays zero (unbounded).
 func normalizeToMillis(v int64) int64 {
@@ -406,9 +415,6 @@ func (r *OneBusAwayResponse) ActiveSituations() []Situation {
 }
 ```
 
-Also remove the temporary `type RawSituation struct{}` placeholder from `models/types.go`
-if you added it in Task 1.
-
 - [ ] **Step 4: Run to verify pass**
 
 Run: `go test ./models/ -v 2>&1 | tail -25`
@@ -422,8 +428,8 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add models/situation.go models/situation_test.go models/types.go
-git commit -m "feat(models): parse OBA situations + ActiveSituations() active-window filter"
+git add models/situation.go models/situation_test.go
+git commit -m "feat(models): ActiveSituations() active-window filter over OBA situations"
 ```
 
 ---
@@ -568,6 +574,14 @@ func TestFormatSMSAlerts_DescriptionFallbackWhenNoSummary(t *testing.T) {
 	assert.Contains(t, out, "Body text")
 }
 
+func TestFormatSMSAlerts_TruncatesLongText(t *testing.T) {
+	long := strings.Repeat("x", 300)
+	out := FormatSMSAlerts([]models.Situation{sit(long, "")}, nil, "en-US")
+	assert.Contains(t, out, "…")
+	assert.NotContains(t, out, long)                       // full 300-char string not present
+	assert.Less(t, len([]rune(out)), 300)                  // materially shorter
+}
+
 func TestFormatSMSAlerts_SkipsEmptyAndCountsOverflow(t *testing.T) {
 	in := []models.Situation{sit("A", ""), sit("", ""), sit("B", ""), sit("C", "")}
 	out := FormatSMSAlerts(in, nil, "en-US")
@@ -622,7 +636,19 @@ import (
 const (
 	smsMaxAlerts   = 2
 	voiceMaxAlerts = 2
+	// smsAlertMaxRunes bounds a single SMS alert line so a long OBA summary/description
+	// (real ones run ~180+ chars) can't balloon the message. Rune-safe.
+	smsAlertMaxRunes = 140
 )
+
+// truncateRunes cuts s to at most max runes, appending "…" when it truncates.
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return strings.TrimSpace(string(r[:max])) + "…"
+}
 
 // localizedOr returns the localized value for key, or fallback if missing.
 // (localizedOrEmpty lives in response.go in this same package.)
@@ -635,12 +661,14 @@ func localizedOr(lm *localization.LocalizationManager, key, language, fallback s
 	return fallback
 }
 
-// smsBody returns the SMS text for a situation (summary, else description), or "".
+// smsBody returns the SMS text for a situation (summary, else description), truncated to
+// keep the message short, or "" when the situation has neither.
 func smsBody(s models.Situation) string {
-	if s.Summary != "" {
-		return s.Summary
+	text := s.Summary
+	if text == "" {
+		text = s.Description
 	}
-	return s.Description
+	return truncateRunes(text, smsAlertMaxRunes)
 }
 
 // voiceBody returns the spoken text for a situation (summary then description), or "".
@@ -744,7 +772,9 @@ func createMockResponseWithAlert(stopID string) *models.OneBusAwayResponse {
 	resp.CurrentTime = 1782940990927
 	resp.Data.References = models.OBAReferences{Situations: []models.RawSituation{{
 		ID:            "1_alert",
-		Summary:       models.NLString{Value: "Route 8 is on reroute due to construction"},
+		// Deliberately contains no arrivals token (route/headsign) so the ordering
+		// assertion below tests real placement, not a within-alert-line coincidence.
+		Summary:       models.NLString{Value: "Elevator outage at this station"},
 		ActiveWindows: []models.ActiveWindow{{From: 1776212160000, To: 1789383540000}},
 	}}}
 	return resp
@@ -769,9 +799,10 @@ func TestSMSHandler_ShowsServiceAlert(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
 	assert.Contains(t, body, "Service alert")
-	assert.Contains(t, body, "reroute due to construction")
-	// Alert appears before the arrivals line.
-	assert.Less(t, strings.Index(body, "Service alert"), strings.Index(body, "Route 8"))
+	assert.Contains(t, body, "Elevator outage")
+	// Alert appears before the arrivals line ("Downtown" is Route 8's headsign from
+	// createMockArrivals, and does not appear in the alert text).
+	assert.Less(t, strings.Index(body, "Service alert"), strings.Index(body, "Downtown"))
 	mockClient.AssertExpectations(t)
 }
 
