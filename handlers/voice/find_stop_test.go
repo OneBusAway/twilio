@@ -138,6 +138,33 @@ func TestHandleFindStop_InvalidCallSidStillProceeds(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
+func TestHandleFindStop_SpeaksServiceAlert(t *testing.T) {
+	r, mockClient, _ := setupFindStopHandler()
+
+	stops := []models.StopOption{{FullStopID: "1_12345", StopName: "Test Stop"}}
+	resp := newArrivalsResponse("1_12345")
+	resp.CurrentTime = 1782940990927
+	resp.Data.References = models.OBAReferences{Situations: []models.RawSituation{{
+		ID:            "1_alert",
+		Summary:       models.NLString{Value: "Elevator outage at this station"},
+		ActiveWindows: []models.ActiveWindow{{From: 1776212160000, To: 1789383540000}},
+	}}}
+	mockClient.On("FindAllMatchingStops", "12345").Return(stops, nil)
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_12345", 30).Return(resp, nil)
+	mockClient.On("ProcessArrivals", resp, mock.Anything).Return([]models.Arrival{{RouteShortName: "8", MinutesUntilArrival: 5}})
+	mockClient.On("GetStopInfo", "1_12345").Return(&stops[0], nil)
+
+	w := postFindStop(r, "+14444444444", "12345")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Service alert")
+	assert.Contains(t, body, "Elevator outage")
+	// Alert is spoken before the arrivals line.
+	assert.Less(t, strings.Index(body, "Service alert"), strings.Index(body, "Route 8"))
+	mockClient.AssertExpectations(t)
+}
+
 func TestHandleFindStop_EmptyDigits(t *testing.T) {
 	r, _, _ := setupFindStopHandler()
 
@@ -423,4 +450,42 @@ func TestFindStopRecordsAmbiguousInteraction(t *testing.T) {
 	if !strings.Contains(body, `stop_lookups_total{agency="1",result="ambiguous"} 1`) {
 		t.Errorf("expected ambiguous stop lookup:\n%s", body)
 	}
+}
+
+// TestHandleVoiceMenuAction_ExtendDoesNotRepeatServiceAlert locks in that service
+// alerts are spoken only on the initial stop lookup (minutesAfter == 0), not repeated
+// on each "extend departures" menu loop, mirroring the SMS first-page-only behavior.
+func TestHandleVoiceMenuAction_ExtendDoesNotRepeatServiceAlert(t *testing.T) {
+	r, mockClient, h := setupFindStopHandler()
+	r.POST("/voice/menu_action", h.HandleVoiceMenuAction)
+
+	// Prime a voice session as if the caller already looked up this stop.
+	require.NoError(t, h.SessionStore.SetVoiceSession("+14444444444", &models.VoiceSession{StopID: "1_12345"}))
+
+	// The extend fetches arrivals with the extended (60-min) window; the response carries
+	// an active alert that must NOT be re-spoken.
+	resp := newArrivalsResponse("1_12345")
+	resp.CurrentTime = 1782940990927
+	resp.Data.References = models.OBAReferences{Situations: []models.RawSituation{{
+		ID:            "1_alert",
+		Summary:       models.NLString{Value: "Elevator outage at this station"},
+		ActiveWindows: []models.ActiveWindow{{From: 1776212160000, To: 1789383540000}},
+	}}}
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_12345", 60).Return(resp, nil)
+	mockClient.On("ProcessArrivals", resp, mock.Anything).Return([]models.Arrival{{RouteShortName: "8", MinutesUntilArrival: 5}})
+	mockClient.On("GetStopInfo", "1_12345").Return(&models.StopOption{FullStopID: "1_12345", StopName: "Test Stop"}, nil)
+
+	form := url.Values{}
+	form.Set("From", "+14444444444")
+	form.Set("Digits", "1") // press 1 = extend departures
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/voice/menu_action?minutesAfter=60&lang=en-US", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Route 8")          // arrivals still returned on extend
+	assert.NotContains(t, body, "Service alert") // alert NOT repeated on extend
+	mockClient.AssertExpectations(t)
 }

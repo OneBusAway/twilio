@@ -247,28 +247,8 @@ func TestSearchStops_InvalidCoordinates(t *testing.T) {
 
 func TestGetArrivalsAndDepartures_MissingStopInfo(t *testing.T) {
 	mockResponse := models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: "", // Missing stop ID
 			},
 		},

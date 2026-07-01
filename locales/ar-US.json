@@ -53,5 +53,9 @@
   "error.internal_error": "حدث خطأ داخلي. يرجى المحاولة مرة أخرى.",
   "error.validation_failed": "إدخال غير صحيح. يرجى التحقق من طلبك والمحاولة مرة أخرى.",
   "error.general": "حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
-  "error.invalid_request": "تنسيق طلب غير صحيح. يرجى المحاولة مرة أخرى."
+  "error.invalid_request": "تنسيق طلب غير صحيح. يرجى المحاولة مرة أخرى.",
+  "sms.alert.prefix": "⚠ تنبيه الخدمة:",
+  "sms.alert.more": "+%d تنبيهات خدمة أخرى.",
+  "voice.alert.lead_in": "تنبيه الخدمة.",
+  "voice.alert.more": "هناك %d تنبيهات خدمة أخرى."
 }

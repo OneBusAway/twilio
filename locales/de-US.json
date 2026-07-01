@@ -53,5 +53,9 @@
   "error.internal_error": "Ein interner Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
   "error.validation_failed": "Ungültige Eingabe. Bitte überprüfen Sie Ihre Anfrage und versuchen Sie es erneut.",
   "error.general": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
-  "error.invalid_request": "Ungültiges Anforderungsformat. Bitte versuchen Sie es erneut."
+  "error.invalid_request": "Ungültiges Anforderungsformat. Bitte versuchen Sie es erneut.",
+  "sms.alert.prefix": "⚠ Servicemeldung:",
+  "sms.alert.more": "+%d weitere Servicemeldungen.",
+  "voice.alert.lead_in": "Servicemeldung.",
+  "voice.alert.more": "Es gibt %d weitere Servicemeldungen."
 }

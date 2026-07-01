@@ -140,28 +140,8 @@ func TestVoiceHandler_FindStopWithMenuOptions(t *testing.T) {
 	}
 
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: "1_12345",
 			},
 		},
@@ -221,28 +201,8 @@ func TestVoiceHandler_SingleDigitWithoutDisambiguationSession_TreatedAsStopID(t 
 	}
 
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: "1_1",
 			},
 		},
@@ -318,28 +278,8 @@ func TestVoiceHandler_FindStop_DisambiguationChoiceLoadsArrivals(t *testing.T) {
 	}
 
 	mockResponseSecond := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: "40_999",
 			},
 		},
@@ -450,28 +390,8 @@ func TestVoiceHandler_MenuActionExtendDepartures(t *testing.T) {
 	assert.NoError(t, err)
 
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: "1_12345",
 			},
 		},
@@ -623,28 +543,8 @@ func TestVoiceHandler_ExtendedDeparturesMultipleTimes(t *testing.T) {
 	assert.NoError(t, err)
 
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: "1_12345",
 			},
 		},
@@ -847,35 +747,9 @@ func TestVoiceHandler_StopNameRetrievalInResponse(t *testing.T) {
 
 	// Mock the arrivals response
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
-				ArrivalsAndDepartures: []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
+				ArrivalsAndDepartures: []models.OBAArrivalDeparture{
 					{
 						RouteShortName: "8",
 						TripHeadsign:   "Downtown",
@@ -943,35 +817,9 @@ func TestVoiceHandler_StopNameRetrievalFailure(t *testing.T) {
 
 	// Mock the arrivals response
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
-				ArrivalsAndDepartures: []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
+				ArrivalsAndDepartures: []models.OBAArrivalDeparture{
 					{
 						RouteShortName: "8",
 						TripHeadsign:   "Downtown",

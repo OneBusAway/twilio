@@ -1,0 +1,118 @@
+package formatters
+
+import (
+	"fmt"
+	"strings"
+
+	"oba-twilio/localization"
+	"oba-twilio/models"
+)
+
+const (
+	smsMaxAlerts   = 2
+	voiceMaxAlerts = 2
+	// smsAlertMaxRunes bounds a single SMS alert line so a long OBA summary/description
+	// (real ones run ~180+ chars) can't balloon the message. Rune-safe.
+	smsAlertMaxRunes = 140
+)
+
+// truncateRunes cuts s to at most max runes, appending "…" when it truncates.
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return strings.TrimSpace(string(r[:max])) + "…"
+}
+
+// capWithOverflow returns the first max items and the count of items dropped beyond max.
+func capWithOverflow(items []string, max int) (shown []string, overflow int) {
+	if len(items) <= max {
+		return items, 0
+	}
+	return items[:max], len(items) - max
+}
+
+// localizedOr returns the localized value for key, or fallback if missing.
+// (localizedOrEmpty lives in response.go in this same package.)
+func localizedOr(lm *localization.LocalizationManager, key, language, fallback string, params ...interface{}) string {
+	if lm != nil {
+		if v := localizedOrEmpty(lm.GetString(key, language, params...), key); v != "" {
+			return v
+		}
+	}
+	return fallback
+}
+
+// smsBody returns the SMS text for a situation (summary, else description), truncated to
+// keep the message short, or "" when the situation has neither.
+func smsBody(s models.Situation) string {
+	text := s.Summary
+	if text == "" {
+		text = s.Description
+	}
+	return truncateRunes(text, smsAlertMaxRunes)
+}
+
+// voiceBody returns the spoken text for a situation (summary then description), or "".
+func voiceBody(s models.Situation) string {
+	parts := make([]string, 0, 2)
+	if s.Summary != "" {
+		parts = append(parts, s.Summary)
+	}
+	if s.Description != "" {
+		parts = append(parts, s.Description)
+	}
+	return strings.Join(parts, " ")
+}
+
+// FormatSMSAlerts renders a compact, localized alert block for SMS, or "" if none.
+func FormatSMSAlerts(situations []models.Situation, lm *localization.LocalizationManager, language string) string {
+	bodies := make([]string, 0, len(situations))
+	for _, s := range situations {
+		if b := smsBody(s); b != "" {
+			bodies = append(bodies, b)
+		}
+	}
+	if len(bodies) == 0 {
+		return ""
+	}
+	prefix := localizedOr(lm, "sms.alert.prefix", language, "⚠ Service alert:")
+
+	shown, overflow := capWithOverflow(bodies, smsMaxAlerts)
+	lines := make([]string, 0, len(shown)+1)
+	for _, b := range shown {
+		lines = append(lines, prefix+" "+b)
+	}
+	if overflow > 0 {
+		lines = append(lines, localizedOr(lm, "sms.alert.more", language,
+			fmt.Sprintf("+%d more service alerts.", overflow), overflow))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// FormatVoiceAlerts renders a spoken, localized alert block for voice, or "" if none.
+func FormatVoiceAlerts(situations []models.Situation, lm *localization.LocalizationManager, language string) string {
+	bodies := make([]string, 0, len(situations))
+	for _, s := range situations {
+		if b := voiceBody(s); b != "" {
+			bodies = append(bodies, b)
+		}
+	}
+	if len(bodies) == 0 {
+		return ""
+	}
+	leadIn := localizedOr(lm, "voice.alert.lead_in", language, "Service alert.")
+
+	shown, overflow := capWithOverflow(bodies, voiceMaxAlerts)
+	spoken := make([]string, 0, len(shown))
+	for _, b := range shown {
+		spoken = append(spoken, leadIn+" "+b)
+	}
+	out := strings.Join(spoken, " ")
+	if overflow > 0 {
+		out += " " + localizedOr(lm, "voice.alert.more", language,
+			fmt.Sprintf("There are %d more service alerts.", overflow), overflow)
+	}
+	return out
+}

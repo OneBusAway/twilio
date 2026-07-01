@@ -137,28 +137,8 @@ func createTestManagerWithSpanish() *localization.LocalizationManager {
 
 func createMockResponse(stopID string) *models.OneBusAwayResponse {
 	return &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: stopID,
 			},
 		},
@@ -826,5 +806,60 @@ func TestSMSHandlerRecordsResolvedOnDisambiguationChoice(t *testing.T) {
 	if !strings.Contains(w2.Body.String(), `interactions_total{channel="sms",outcome="resolved"} 1`) {
 		t.Errorf("expected resolved interaction after disambiguation choice:\n%s", w2.Body.String())
 	}
+	mockClient.AssertExpectations(t)
+}
+
+func createMockResponseWithAlert(stopID string) *models.OneBusAwayResponse {
+	resp := createMockResponse(stopID)
+	resp.CurrentTime = 1782940990927
+	resp.Data.References = models.OBAReferences{Situations: []models.RawSituation{{
+		ID: "1_alert",
+		// Deliberately contains no arrivals token (route/headsign) so the ordering
+		// assertion below tests real placement, not a within-alert-line coincidence.
+		Summary:       models.NLString{Value: "Elevator outage at this station"},
+		ActiveWindows: []models.ActiveWindow{{From: 1776212160000, To: 1789383540000}},
+	}}}
+	return resp
+}
+
+func TestSMSHandler_ShowsServiceAlert(t *testing.T) {
+	r, mockClient, _ := setupSMSTestRouter()
+
+	mockStopOptions := []models.StopOption{{
+		FullStopID: "1_75403", AgencyName: "King County Metro",
+		StopName: "Pine St & 3rd Ave", DisplayText: "King County Metro: Pine St & 3rd Ave",
+	}}
+	mockResponse := createMockResponseWithAlert("1_75403")
+	mockArrivals := createMockArrivals()
+
+	mockClient.On("FindAllMatchingStops", "75403").Return(mockStopOptions, nil)
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_75403", 30).Return(mockResponse, nil)
+	mockClient.On("ProcessArrivals", mockResponse, 30).Return(mockArrivals)
+
+	w := sendSMSRequest(r, "+12345678901", "75403")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Service alert")
+	assert.Contains(t, body, "Elevator outage")
+	// Alert appears before the arrivals line ("Downtown" is Route 8's headsign from
+	// createMockArrivals, and does not appear in the alert text).
+	assert.Less(t, strings.Index(body, "Service alert"), strings.Index(body, "Downtown"))
+	mockClient.AssertExpectations(t)
+}
+
+func TestSMSHandler_NoAlertWhenNoSituations(t *testing.T) {
+	r, mockClient, _ := setupSMSTestRouter()
+	mockStopOptions := []models.StopOption{{
+		FullStopID: "1_75403", StopName: "Pine St & 3rd Ave",
+		DisplayText: "King County Metro: Pine St & 3rd Ave",
+	}}
+	mockResponse := createMockResponse("1_75403") // no situations
+	mockClient.On("FindAllMatchingStops", "75403").Return(mockStopOptions, nil)
+	mockClient.On("GetArrivalsAndDeparturesWithWindow", "1_75403", 30).Return(mockResponse, nil)
+	mockClient.On("ProcessArrivals", mockResponse, 30).Return(createMockArrivals())
+
+	w := sendSMSRequest(r, "+12345678902", "75403")
+	assert.NotContains(t, w.Body.String(), "Service alert")
 	mockClient.AssertExpectations(t)
 }

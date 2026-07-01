@@ -44,21 +44,42 @@ type Arrival struct {
 	Status               string `json:"status"`
 }
 
+// OBAArrivalDeparture is one predicted arrival/departure at a stop.
+type OBAArrivalDeparture struct {
+	RouteShortName       string `json:"routeShortName"`
+	TripHeadsign         string `json:"tripHeadsign"`
+	PredictedArrivalTime int64  `json:"predictedArrivalTime"`
+	ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
+	Status               string `json:"status"`
+	// SituationIds references alerts affecting this arrival's trip/route. Present on
+	// Puget Sound; treated as optional/non-load-bearing (MVP filters via references).
+	SituationIds []string `json:"situationIds"`
+}
+
+// OBAReferences holds objects referenced by the response.
+type OBAReferences struct {
+	Situations []RawSituation `json:"situations"`
+}
+
+// OBAStopEntry is the stop payload of an arrivals-and-departures-for-stop response.
+type OBAStopEntry struct {
+	ArrivalsAndDepartures []OBAArrivalDeparture `json:"arrivalsAndDepartures"`
+	StopId                string                `json:"stopId"`
+	SituationIds          []string              `json:"situationIds"`
+}
+
+// OBAResponseData is the data envelope.
+type OBAResponseData struct {
+	References OBAReferences `json:"references"`
+	Entry      OBAStopEntry  `json:"entry"`
+}
+
 type OneBusAwayResponse struct {
-	Data struct {
-		Entry struct {
-			ArrivalsAndDepartures []struct {
-				RouteShortName       string `json:"routeShortName"`
-				TripHeadsign         string `json:"tripHeadsign"`
-				PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-				ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-				Status               string `json:"status"`
-			} `json:"arrivalsAndDepartures"`
-			StopId string `json:"stopId"`
-		} `json:"entry"`
-	} `json:"data"`
-	Code int    `json:"code"`
-	Text string `json:"text"`
+	// CurrentTime is the server clock in ms; reference time for active-window filtering.
+	CurrentTime int64           `json:"currentTime"`
+	Data        OBAResponseData `json:"data"`
+	Code        int             `json:"code"`
+	Text        string          `json:"text"`
 }
 
 type StopData struct {

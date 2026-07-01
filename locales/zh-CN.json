@@ -53,5 +53,9 @@
   "error.internal_error": "发生内部错误。请重试。",
   "error.validation_failed": "输入无效。请检查您的请求后重试。",
   "error.general": "发生意外错误。请重试。",
-  "error.invalid_request": "请求格式无效。请重试。"
+  "error.invalid_request": "请求格式无效。请重试。",
+  "sms.alert.prefix": "⚠ 服务提醒：",
+  "sms.alert.more": "+%d 条更多服务提醒。",
+  "voice.alert.lead_in": "服务提醒。",
+  "voice.alert.more": "还有 %d 条服务提醒。"
 }

@@ -149,28 +149,8 @@ func TestSMSHandler_ValidStopID(t *testing.T) {
 	r, mockClient := setupTestRouter()
 
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: "1_75403",
 			},
 		},
@@ -258,28 +238,8 @@ func TestVoiceHandler_Input(t *testing.T) {
 	r, mockClient := setupTestRouter()
 
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
 				StopId: "1_12345",
 			},
 		},

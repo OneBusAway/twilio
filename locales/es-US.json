@@ -53,5 +53,9 @@
   "error.internal_error": "Ocurrió un error interno. Inténtelo de nuevo.",
   "error.validation_failed": "Entrada inválida. Verifique su solicitud e inténtelo de nuevo.",
   "error.general": "Ocurrió un error inesperado. Inténtelo de nuevo.",
-  "error.invalid_request": "Formato de solicitud inválido. Inténtelo de nuevo."
+  "error.invalid_request": "Formato de solicitud inválido. Inténtelo de nuevo.",
+  "sms.alert.prefix": "⚠ Alerta de servicio:",
+  "sms.alert.more": "+%d alertas de servicio más.",
+  "voice.alert.lead_in": "Alerta de servicio.",
+  "voice.alert.more": "Hay %d alertas de servicio más."
 }
