@@ -55,7 +55,7 @@ already carries alerts the app currently discards. Relevant shape (JSON):
           "summary":     { "value": "Reroute on Route 40" },
           "description": { "value": "Route 40 is rerouted around 3rd Ave due to construction." },
           "url":         { "value": "https://example.org/alerts/40" },
-          "activeWindows": [ { "from": 1330000000, "to": 1340000000 } ],
+          "activeWindows": [ { "from": 1330000000000, "to": 1340000000000 } ],
           "allAffects": [ { "agencyId": "1", "routeId": "1_100", "stopId": "1_75403" } ]
         }
       ]
@@ -82,10 +82,41 @@ Key facts that drive the design:
   (the OBA NaturalLanguageString shape). Some deployments send a bare string. The
   parser must tolerate both.
 - **`activeWindows`** bound when the alert is live. Empty/absent windows ⇒ always active.
-  Timestamp units are inconsistent across OBA deployments (seconds vs. ms); the parser
-  normalizes defensively (§4.2).
+  **Canonical unit is milliseconds** — every OBA where-API timestamp (`currentTime`,
+  `creationTime`, `scheduledArrivalTime`, `serviceDate`, …) is documented as ms since
+  epoch, so the ms example above is the expected shape. However, OBA ingests GTFS-RT
+  alerts whose `TimeRange.start/end` are POSIX **seconds**, so some deployments may emit
+  seconds-valued windows. The parser normalizes defensively for that deployment-variance
+  case (§4.2). Do **not** confuse `activeWindows` with the sibling `publicationWindows`
+  field — we filter on `activeWindows` only.
 - **`currentTime`** (top-level, ms) is the server's clock and is the reference time for
   active-window filtering — preferred over local wall-clock so the app and API agree.
+
+### 2.1 Verification against a live response — DONE (2026-07-01)
+
+The field shapes below were confirmed against a **live**
+`GET /api/where/arrivals-and-departures-for-stop/1_75403.json` from
+`api.pugetsound.onebusaway.org`, which returned one active situation (`id 1_86608`). No
+remaining unknowns block implementation:
+
+- **`activeWindows` — CONFIRMED milliseconds.** Field name is exactly `activeWindows`;
+  the sample had `{ "from": 1776212160000, "to": 1789383540000 }` (13-digit ms), bracketing
+  `currentTime: 1782940990927`. `publicationWindows` is a separate, sibling field (empty in
+  the sample) — we filter on `activeWindows` only. The §4.2 seconds→ms normalization stays
+  as cheap insurance for other deployments, but ms is the confirmed Puget Sound reality.
+- **`summary` / `description` / `url` — CONFIRMED wrapped**, as `{ "lang": "en", "value": ... }`.
+  `url` **does** exist (e.g. a trip-planner link). Our `nlString` reads `value` and ignores
+  `lang`; the bare-string tolerance remains for other deployments.
+- **`severity` and `reason` — CONFIRMED present** (`"noImpact"`, `"OTHER_CAUSE"`). Captured
+  for future use; **no MVP logic filters on severity** — we show all active situations
+  regardless (a "noImpact" temporary-stop relocation is still useful to a rider at that stop).
+- **Per-arrival `situationIds` — CONFIRMED present** on this deployment (e.g. `["1_86608"]`
+  on the affected arrival, `[]` on others). Still treated as optional/non-load-bearing;
+  MVP filtering uses `references.situations` only.
+- **Reality check on length:** real summaries are long (~180 chars) and descriptions longer.
+  This validates the per-channel caps (§4.3) and means the SMS alert block can add multiple
+  segments — acceptable for MVP, noted for the implementer (consider `smsMaxAlerts = 1` if
+  segment cost matters).
 
 ## 3. Architecture Overview
 
@@ -205,7 +236,8 @@ Behavior:
    bound to ms before comparing (heuristic: a nonzero value `< 1e12` is treated as
    seconds and multiplied by 1000). If `r.CurrentTime` is 0 (older/edge responses),
    skip window filtering and treat all situations as active (fail open — better to show
-   a possibly-stale alert than hide a real one).
+   a possibly-stale alert than hide a real one). Apply the same fail-open stance to a
+   situation whose windows are all unparseable/zero on both bounds: treat it as active.
 4. Map surviving `rawSituation` → `Situation`, trimming whitespace. Situations already
    unique by ID in `references`; no extra dedupe needed.
 5. Preserve source order (OBA orders by relevance/severity in practice).
