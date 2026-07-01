@@ -53,5 +53,9 @@
   "error.internal_error": "An internal error occurred. Please try again.",
   "error.validation_failed": "Invalid input. Please check your request and try again.",
   "error.general": "An unexpected error occurred. Please try again.",
-  "error.invalid_request": "Invalid request format. Please try again."
+  "error.invalid_request": "Invalid request format. Please try again.",
+  "sms.alert.prefix": "⚠ Service alert:",
+  "sms.alert.more": "+%d more service alerts.",
+  "voice.alert.lead_in": "Service alert.",
+  "voice.alert.more": "There are %d more service alerts."
 }

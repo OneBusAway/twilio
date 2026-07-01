@@ -53,5 +53,9 @@
   "error.internal_error": "내부 오류가 발생했습니다. 다시 시도하세요.",
   "error.validation_failed": "잘못된 입력입니다. 요청을 확인하고 다시 시도하세요.",
   "error.general": "예상치 못한 오류가 발생했습니다. 다시 시도하세요.",
-  "error.invalid_request": "잘못된 요청 형식입니다. 다시 시도하세요."
+  "error.invalid_request": "잘못된 요청 형식입니다. 다시 시도하세요.",
+  "sms.alert.prefix": "⚠ 서비스 알림:",
+  "sms.alert.more": "+%d개의 추가 서비스 알림.",
+  "voice.alert.lead_in": "서비스 알림.",
+  "voice.alert.more": "%d개의 추가 서비스 알림이 있습니다."
 }

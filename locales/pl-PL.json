@@ -53,5 +53,9 @@
   "error.internal_error": "Wystąpił błąd wewnętrzny. Spróbuj ponownie.",
   "error.validation_failed": "Nieprawidłowe dane wejściowe. Sprawdź żądanie i spróbuj ponownie.",
   "error.general": "Wystąpił nieoczekiwany błąd. Spróbuj ponownie.",
-  "error.invalid_request": "Nieprawidłowy format żądania. Spróbuj ponownie."
+  "error.invalid_request": "Nieprawidłowy format żądania. Spróbuj ponownie.",
+  "sms.alert.prefix": "⚠ Komunikat serwisowy:",
+  "sms.alert.more": "+%d więcej komunikatów serwisowych.",
+  "voice.alert.lead_in": "Komunikat serwisowy.",
+  "voice.alert.more": "Jest %d więcej komunikatów serwisowych."
 }

@@ -53,5 +53,9 @@
   "error.internal_error": "Une erreur interne s'est produite. Veuillez réessayer.",
   "error.validation_failed": "Entrée invalide. Veuillez vérifier votre demande et réessayer.",
   "error.general": "Une erreur inattendue s'est produite. Veuillez réessayer.",
-  "error.invalid_request": "Format de demande invalide. Veuillez réessayer."
+  "error.invalid_request": "Format de demande invalide. Veuillez réessayer.",
+  "sms.alert.prefix": "⚠ Alerte de service :",
+  "sms.alert.more": "+%d autres alertes de service.",
+  "voice.alert.lead_in": "Alerte de service.",
+  "voice.alert.more": "Il y a %d autres alertes de service."
 }
