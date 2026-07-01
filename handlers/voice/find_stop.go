@@ -384,12 +384,16 @@ func (h *Handler) getAndFormatVoiceArrivalsWithSession(c *gin.Context, phoneNumb
 	var elements []twiml.Element
 
 	// Speak active service alerts before arrivals so a caller on a disrupted route hears
-	// why first. Empty => unchanged output.
-	if alertText := formatters.FormatVoiceAlerts(obaResp.ActiveSituations(), h.LocalizationManager, language); alertText != "" {
-		elements = append(elements, &twiml.VoiceSay{
-			Message:  alertText,
-			Language: language,
-		})
+	// why first, but only on the initial stop lookup (minutesAfter == 0) — not on each
+	// "extend departures" menu loop, mirroring the SMS first-page-only behavior. Empty
+	// => unchanged output.
+	if minutesAfter == 0 {
+		if alertText := formatters.FormatVoiceAlerts(obaResp.ActiveSituations(), h.LocalizationManager, language); alertText != "" {
+			elements = append(elements, &twiml.VoiceSay{
+				Message:  alertText,
+				Language: language,
+			})
+		}
 	}
 
 	// Add arrivals message

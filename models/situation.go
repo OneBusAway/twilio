@@ -42,7 +42,7 @@ func (n *NLString) UnmarshalJSON(b []byte) error {
 }
 
 // ActiveWindow is a time range during which a situation is in effect (ms since epoch;
-// seconds tolerated via normalization in Task 2). Zero bound means unbounded on that side.
+// seconds tolerated via normalization). Zero bound means unbounded on that side.
 type ActiveWindow struct {
 	From int64 `json:"from"`
 	To   int64 `json:"to"`

@@ -25,6 +25,14 @@ func truncateRunes(s string, max int) string {
 	return strings.TrimSpace(string(r[:max])) + "…"
 }
 
+// capWithOverflow returns the first max items and the count of items dropped beyond max.
+func capWithOverflow(items []string, max int) (shown []string, overflow int) {
+	if len(items) <= max {
+		return items, 0
+	}
+	return items[:max], len(items) - max
+}
+
 // localizedOr returns the localized value for key, or fallback if missing.
 // (localizedOrEmpty lives in response.go in this same package.)
 func localizedOr(lm *localization.LocalizationManager, key, language, fallback string, params ...interface{}) string {
@@ -60,7 +68,7 @@ func voiceBody(s models.Situation) string {
 
 // FormatSMSAlerts renders a compact, localized alert block for SMS, or "" if none.
 func FormatSMSAlerts(situations []models.Situation, lm *localization.LocalizationManager, language string) string {
-	var bodies []string
+	bodies := make([]string, 0, len(situations))
 	for _, s := range situations {
 		if b := smsBody(s); b != "" {
 			bodies = append(bodies, b)
@@ -71,12 +79,7 @@ func FormatSMSAlerts(situations []models.Situation, lm *localization.Localizatio
 	}
 	prefix := localizedOr(lm, "sms.alert.prefix", language, "⚠ Service alert:")
 
-	shown := bodies
-	overflow := 0
-	if len(bodies) > smsMaxAlerts {
-		shown = bodies[:smsMaxAlerts]
-		overflow = len(bodies) - smsMaxAlerts
-	}
+	shown, overflow := capWithOverflow(bodies, smsMaxAlerts)
 	lines := make([]string, 0, len(shown)+1)
 	for _, b := range shown {
 		lines = append(lines, prefix+" "+b)
@@ -90,23 +93,23 @@ func FormatSMSAlerts(situations []models.Situation, lm *localization.Localizatio
 
 // FormatVoiceAlerts renders a spoken, localized alert block for voice, or "" if none.
 func FormatVoiceAlerts(situations []models.Situation, lm *localization.LocalizationManager, language string) string {
-	leadIn := localizedOr(lm, "voice.alert.lead_in", language, "Service alert.")
-	var spoken []string
+	bodies := make([]string, 0, len(situations))
 	for _, s := range situations {
 		if b := voiceBody(s); b != "" {
-			spoken = append(spoken, leadIn+" "+b)
+			bodies = append(bodies, b)
 		}
 	}
-	if len(spoken) == 0 {
+	if len(bodies) == 0 {
 		return ""
 	}
-	shown := spoken
-	overflow := 0
-	if len(spoken) > voiceMaxAlerts {
-		shown = spoken[:voiceMaxAlerts]
-		overflow = len(spoken) - voiceMaxAlerts
+	leadIn := localizedOr(lm, "voice.alert.lead_in", language, "Service alert.")
+
+	shown, overflow := capWithOverflow(bodies, voiceMaxAlerts)
+	spoken := make([]string, 0, len(shown))
+	for _, b := range shown {
+		spoken = append(spoken, leadIn+" "+b)
 	}
-	out := strings.Join(shown, " ")
+	out := strings.Join(spoken, " ")
 	if overflow > 0 {
 		out += " " + localizedOr(lm, "voice.alert.more", language,
 			fmt.Sprintf("There are %d more service alerts.", overflow), overflow)
