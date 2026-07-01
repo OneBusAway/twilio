@@ -334,6 +334,14 @@ func (h *SMSHandler) getAndFormatArrivalsWithStopNameAndSession(c *gin.Context, 
 		message = formatters.FormatSMSResponse(arrivals, stopDisplayName, h.LocalizationManager, session.Language)
 	}
 
+	// Prepend active service alerts on the first page of a stop's arrivals so a rider
+	// whose route is disrupted sees why before the times. Empty => unchanged output.
+	if offset == 0 {
+		if alertText := formatters.FormatSMSAlerts(obaResp.ActiveSituations(), h.LocalizationManager, session.Language); alertText != "" {
+			message = alertText + "\n\n" + message
+		}
+	}
+
 	// Add menu hints if there are arrivals
 	if len(arrivals) > 0 {
 		moreHint := h.LocalizationManager.GetString("sms.menu.more_hint", session.Language)
