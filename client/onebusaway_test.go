@@ -64,35 +64,9 @@ func TestGetArrivalsAndDepartures_Success(t *testing.T) {
 	}
 
 	mockResponse := models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
-				ArrivalsAndDepartures: []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
+				ArrivalsAndDepartures: []models.OBAArrivalDeparture{
 					{
 						RouteShortName:       "8",
 						TripHeadsign:         "Seattle Center",
@@ -158,35 +132,9 @@ func TestProcessArrivals(t *testing.T) {
 	now := time.Now().Unix() * 1000
 
 	mockResponse := &models.OneBusAwayResponse{
-		Data: struct {
-			Entry struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			} `json:"entry"`
-		}{
-			Entry: struct {
-				ArrivalsAndDepartures []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				} `json:"arrivalsAndDepartures"`
-				StopId string `json:"stopId"`
-			}{
-				ArrivalsAndDepartures: []struct {
-					RouteShortName       string `json:"routeShortName"`
-					TripHeadsign         string `json:"tripHeadsign"`
-					PredictedArrivalTime int64  `json:"predictedArrivalTime"`
-					ScheduledArrivalTime int64  `json:"scheduledArrivalTime"`
-					Status               string `json:"status"`
-				}{
+		Data: models.OBAResponseData{
+			Entry: models.OBAStopEntry{
+				ArrivalsAndDepartures: []models.OBAArrivalDeparture{
 					{
 						RouteShortName:       "8",
 						TripHeadsign:         "Seattle Center",
