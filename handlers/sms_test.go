@@ -376,6 +376,15 @@ func TestSMSHandler_NewKeyword(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
+func TestSMSHandler_StopKeywordSendsNoMessage(t *testing.T) {
+	r, _, _ := setupSMSTestRouter()
+
+	w := sendSMSRequest(r, "+12345678901", "STOP")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.NotContains(t, w.Body.String(), "<Message>")
+}
+
 func TestSMSHandler_InvalidKeyword(t *testing.T) {
 	r, mockClient, _ := setupSMSTestRouter()
 
