@@ -38,9 +38,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          # Keep in step with the golangci-lint you run for `make lint`.
+          version: v2.12.2
 
   test:
     name: Test
