@@ -402,8 +402,11 @@ func (h *SMSHandler) handleKeywords(c *gin.Context, req models.TwilioSMSRequest,
 	case "more", "later", "extend":
 		h.handleMoreRequest(c, req, session)
 		return true
-	case "new", "stop", "clear":
+	case "new", "clear":
 		h.handleNewRequest(c, req, session)
+		return true
+	case "stop":
+		h.handleStopRequest(c, req)
 		return true
 	}
 
@@ -457,6 +460,15 @@ func (h *SMSHandler) handleMoreRequest(c *gin.Context, req models.TwilioSMSReque
 }
 
 // handleNewRequest clears session for new stop query
+// handleStopRequest clears the rider's sessions and sends no message. STOP is
+// a carrier opt-out keyword: Twilio's opt-out management records the opt-out
+// and sends the confirmation, so replying here would message an opted-out rider.
+func (h *SMSHandler) handleStopRequest(c *gin.Context, req models.TwilioSMSRequest) {
+	h.SessionStore.ClearSMSSession(req.From)
+	h.SessionStore.ClearDisambiguationSession(req.From)
+	c.String(http.StatusOK, `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`)
+}
+
 func (h *SMSHandler) handleNewRequest(c *gin.Context, req models.TwilioSMSRequest, session *models.SMSSession) {
 	h.SessionStore.ClearSMSSession(req.From)
 	h.SessionStore.ClearDisambiguationSession(req.From)

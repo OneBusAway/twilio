@@ -35,7 +35,7 @@
   "voice.error.no_digits": "No recibí ningún dígito. Por favor intente llamar nuevamente.",
   "voice.error.stop_not_found": "Lo siento, no pude encontrar ninguna parada con ese ID. Por favor verifique el ID de la parada e inténtelo de nuevo.",
   "voice.error.no_active_session": "No hay selección activa. Por favor llame nuevamente e ingrese un ID de parada para comenzar.",
-  "sms.help": "Envíe un ID de parada (ej. 75403) para obtener llegadas. Responda 'more' para autobuses posteriores, 'help' para este mensaje.",
+  "sms.help": "OneBusAway Cloud: envíe un ID de parada (p. ej., 75403) para ver las próximas salidas. Responda 'more' para ver más. Ayuda: info@onebusaway.org u onebusawaycloud.com/sms. Pueden aplicarse tarifas de mensajes y datos. Responda STOP para darse de baja.",
   "sms.menu.more_hint": "Responda 'more' para autobuses posteriores",
   "sms.menu.new_hint": "Responda 'new' para una parada diferente",
   "sms.menu.help_hint": "Responda 'help' para información de uso",

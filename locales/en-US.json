@@ -35,7 +35,7 @@
   "voice.error.no_digits": "I didn't receive any digits. Please try calling again.",
   "voice.error.stop_not_found": "Sorry, I couldn't find any stops with that ID. Please check the stop ID and try again.",
   "voice.error.no_active_session": "No active selection. Please call again and enter a stop ID to get started.",
-  "sms.help": "Send a stop ID (e.g., 75403) to get bus arrivals. Reply 'more' for later buses, 'help' for this message.",
+  "sms.help": "OneBusAway Cloud transit departures: text a stop ID (e.g., 75403) for next departures. Reply 'more' for later buses. Support: info@onebusaway.org or onebusawaycloud.com/sms. Msg & data rates may apply. Reply STOP to opt out.",
   "sms.menu.more_hint": "Reply 'more' for later buses",
   "sms.menu.new_hint": "Reply 'new' for a different stop",
   "sms.menu.help_hint": "Reply 'help' for usage info",
