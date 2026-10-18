@@ -266,9 +266,6 @@ Create a `.env` file or set environment variables:
 | `ONEBUSAWAY_BASE_URL`               | OneBusAway API base URL                                                                                                | `https://api.pugetsound.onebusaway.org` | Optional                      |
 | **Localization**                    |                                                                                                                        |                                         |                               |
 | `SUPPORTED_LANGUAGES`               | Comma-separated list of supported language codes                                                                       | `en-US`                                 | Optional                      |
-| **Twilio Configuration**            |                                                                                                                        |                                         |                               |
-| `TWILIO_ACCOUNT_SID`                | Twilio account SID (for outbound features)                                                                             | -                                       | Optional                      |
-| `TWILIO_AUTH_TOKEN`                 | Twilio auth token (for outbound features)                                                                              | -                                       | Optional                      |
 | **Salts Configuration for hashing** |                                                                                                                        |                                         |                               |
 | `ANALYTICS_HASH_SALT`               | Salt for hashing sensitive analytics data (32+ char random string)                                                     | -                                       | Required if analytics enabled |
 |`PHONE_LOGS_SALT`| Salt used when hashing phone numbers before they are written to logs                                                   | -                                       | Optional. Omitting it will result in unsalted logs                      |
@@ -308,10 +305,6 @@ ONEBUSAWAY_BASE_URL=https://api.pugetsound.onebusaway.org
 
 # Localization (optional)
 SUPPORTED_LANGUAGES=en-US,es-US,fr-FR
-
-# Twilio (optional - for outbound features)
-TWILIO_ACCOUNT_SID=your_account_sid_here
-TWILIO_AUTH_TOKEN=your_auth_token_here
 
 # Analytics (optional)
 ANALYTICS_ENABLED=true
