@@ -136,7 +136,6 @@ Optional:
 - `PORT` - Server port (default: 8080)
 - `ONEBUSAWAY_BASE_URL` - API base URL (default: https://api.pugetsound.onebusaway.org)
 - `SUPPORTED_LANGUAGES` - Comma-separated language codes (default: "en-US")
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` - For outbound Twilio features
 - `UMAMI_ENABLED` - Enable the Umami analytics provider (default: false)
 - `UMAMI_URL` - Umami host; events POST to `<UMAMI_URL>/api/send` (required when enabled)
 - `UMAMI_WEBSITE_ID` - Umami website UUID (required when enabled)
