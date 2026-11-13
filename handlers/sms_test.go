@@ -383,7 +383,7 @@ func TestSMSHandler_StopKeywordSendsNoMessage(t *testing.T) {
 	w := sendSMSRequest(r, "+12345678901", "STOP")
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.NotContains(t, w.Body.String(), "<Message>")
+	assert.NotContains(t, w.Body.String(), "<Message")
 }
 
 func TestSMSHandler_InvalidKeyword(t *testing.T) {
@@ -872,4 +872,34 @@ func TestSMSHandler_NoAlertWhenNoSituations(t *testing.T) {
 	w := sendSMSRequest(r, "+12345678902", "75403")
 	assert.NotContains(t, w.Body.String(), "Service alert")
 	mockClient.AssertExpectations(t)
+}
+
+func TestSMSHandler_StatusCallbackRecordsUndeliveredReplies(t *testing.T) {
+	r, _, smsHandler := setupSMSTestRouter()
+	m := metrics.New()
+	smsHandler.SetMetrics(m)
+	r.POST("/sms/status", smsHandler.HandleSMSStatus)
+	r.GET("/metrics", m.Handler())
+
+	send := func(status, errorCode string) int {
+		form := url.Values{}
+		form.Set("MessageSid", "SM123")
+		form.Set("MessageStatus", status)
+		form.Set("ErrorCode", errorCode)
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/sms/status", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	assert.Equal(t, http.StatusNoContent, send("undelivered", "30034"))
+	assert.Equal(t, http.StatusNoContent, send("failed", "30034"))
+	assert.Equal(t, http.StatusNoContent, send("delivered", ""))
+	assert.Equal(t, http.StatusNoContent, send("failed", "not-a-code"))
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	assert.Contains(t, w.Body.String(), `sms_delivery_failures_total{error_code="30034"} 2`)
+	assert.Contains(t, w.Body.String(), `sms_delivery_failures_total{error_code="unknown"} 1`)
 }

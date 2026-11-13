@@ -310,6 +310,7 @@ func main() {
 	healthHandler.SetupPublicRoutes(r)
 
 	r.POST("/sms", smsHandler.HandleSMS)
+	r.POST("/sms/status", smsHandler.HandleSMSStatus)
 	r.POST("/voice", voiceHandler.HandleVoiceStart)
 	r.POST("/voice/find_stop", voiceHandler.HandleFindStop)
 	r.POST("/voice/menu_action", voiceHandler.HandleVoiceMenuAction)
@@ -330,7 +331,7 @@ func main() {
 	log.Printf("Starting public server on port %s", port)
 	log.Printf("Starting internal metrics server on port %s", metricsPort)
 	log.Printf("OneBusAway API: %s", obaBaseURL)
-	log.Printf("Public endpoints: GET / , POST /sms , POST /voice* , GET /health , GET /health/ready")
+	log.Printf("Public endpoints: GET / , POST /sms , POST /sms/status , POST /voice* , GET /health , GET /health/ready")
 	log.Printf("Internal endpoints (:%s): GET /metrics , GET /health/detailed , /health/stats , /health/config , /health/cache", metricsPort)
 
 	// Set up graceful shutdown

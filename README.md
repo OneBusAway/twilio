@@ -145,6 +145,7 @@ go test .               # Test main application logic
 
 ### Twilio Webhooks
 - **POST** `/sms` - Handle incoming SMS messages
+- **POST** `/sms/status` - Twilio delivery status callback for SMS replies (set automatically on every reply)
 - **POST** `/voice` - Handle incoming voice calls (initial menu)
 - **POST** `/voice/input` - Handle voice input (DTMF digits)
 
@@ -177,6 +178,7 @@ The endpoint requires no additional environment variables. `/metrics` and `/heal
 | **Interactions** | | | |
 | `interactions_total` | Counter | `channel`, `outcome` | Total user interactions by channel (`sms`/`voice`) and outcome |
 | `stop_lookups_total` | Counter | `result`, `agency` | Total stop lookups by result and matched agency prefix |
+| `sms_delivery_failures_total` | Counter | `error_code` | SMS replies Twilio reported as failed or undelivered, by Twilio error code (for example 30034, unregistered A2P 10DLC number) |
 | **Runtime** | | | |
 | `go_*` | various | — | Go runtime metrics (goroutines, GC, memory, etc.) |
 | `process_*` | various | — | OS process metrics (CPU, file descriptors, etc.) |

@@ -68,6 +68,24 @@ func (h *SMSHandler) SetMetrics(m *metrics.Metrics) {
 	h.metrics = m
 }
 
+var twilioErrorCodePattern = regexp.MustCompile(`^[0-9]{1,6}$`)
+
+// HandleSMSStatus receives Twilio's delivery status callback for an SMS reply
+// and records replies that were never delivered, such as 30034 (unregistered
+// A2P 10DLC number).
+func (h *SMSHandler) HandleSMSStatus(c *gin.Context) {
+	status := c.PostForm("MessageStatus")
+	if status == "failed" || status == "undelivered" {
+		errorCode := c.PostForm("ErrorCode")
+		if !twilioErrorCodePattern.MatchString(errorCode) {
+			errorCode = "unknown"
+		}
+		log.Printf("SMS reply %q was %s, Twilio error %s", c.PostForm("MessageSid"), status, errorCode)
+		h.metrics.RecordSMSDeliveryFailure(errorCode)
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *SMSHandler) Close() {
 	if h.SessionStore != nil {
 		h.SessionStore.Close()

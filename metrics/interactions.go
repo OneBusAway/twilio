@@ -18,6 +18,14 @@ func (m *Metrics) RecordStopLookup(result, agency string) {
 	m.stopLookups.WithLabelValues(result, agency).Inc()
 }
 
+// RecordSMSDeliveryFailure increments sms_delivery_failures_total. Nil-safe.
+func (m *Metrics) RecordSMSDeliveryFailure(errorCode string) {
+	if m == nil || m.smsFailures == nil {
+		return
+	}
+	m.smsFailures.WithLabelValues(errorCode).Inc()
+}
+
 // RecordLookupOutcome records a stop-lookup outcome on both interactions_total
 // and stop_lookups_total in one call, using the same outcome label for each.
 // Keeping the two increments together here ensures the SMS and voice call sites
