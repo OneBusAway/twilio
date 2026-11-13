@@ -79,7 +79,7 @@ func TestSMSHandler_AlwaysSendsResponse(t *testing.T) {
 		assert.NotEmpty(t, responseBody, "Response should not be empty")
 		assert.Contains(t, responseBody, "<?xml")
 		assert.Contains(t, responseBody, "<Response>")
-		assert.Contains(t, responseBody, "<Message>")
+		assert.Contains(t, responseBody, "<Message")
 		assert.Contains(t, responseBody, "Route 71")
 		assert.Contains(t, responseBody, "Route 73")
 		assert.Contains(t, responseBody, "</Message>")

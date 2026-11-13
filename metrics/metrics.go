@@ -17,6 +17,7 @@ type Metrics struct {
 	httpDuration *prometheus.HistogramVec
 	interactions *prometheus.CounterVec
 	stopLookups  *prometheus.CounterVec
+	smsFailures  *prometheus.CounterVec
 }
 
 // New creates a Metrics with a private registry and the standard Go runtime
@@ -45,5 +46,13 @@ func New() *Metrics {
 	)
 	reg.MustRegister(m.httpRequests, m.httpDuration)
 	m.interactions, m.stopLookups = newInteractionMetrics(reg)
+	m.smsFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "sms_delivery_failures_total",
+			Help: "SMS replies Twilio reported as failed or undelivered, by Twilio error code.",
+		},
+		[]string{"error_code"},
+	)
+	reg.MustRegister(m.smsFailures)
 	return m
 }

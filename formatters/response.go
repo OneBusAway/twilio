@@ -128,14 +128,22 @@ func FormatVoiceResponse(arrivals []models.Arrival, stopName string, lm *localiz
 	return response.String()
 }
 
+// SMSStatusCallbackPath is where Twilio reports the delivery status of each reply.
+const SMSStatusCallbackPath = "/sms/status"
+
+type TwiMLSMSMessage struct {
+	Body           string `xml:",chardata"`
+	StatusCallback string `xml:"statusCallback,attr,omitempty"`
+}
+
 type TwiMLSMSResponse struct {
-	XMLName string `xml:"Response"`
-	Message string `xml:"Message"`
+	XMLName string          `xml:"Response"`
+	Message TwiMLSMSMessage `xml:"Message"`
 }
 
 func GenerateTwiMLSMS(message string) (string, error) {
 	twiml := TwiMLSMSResponse{
-		Message: message,
+		Message: TwiMLSMSMessage{Body: message, StatusCallback: SMSStatusCallbackPath},
 	}
 
 	output, err := xml.MarshalIndent(twiml, "", "  ")

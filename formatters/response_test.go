@@ -221,7 +221,7 @@ func TestGenerateTwiMLSMS(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "<?xml version=\"1.0\"")
 	assert.Contains(t, result, "<Response>")
-	assert.Contains(t, result, "<Message>Test message</Message>")
+	assert.Contains(t, result, `<Message statusCallback="/sms/status">Test message</Message>`)
 	assert.Contains(t, result, "</Response>")
 }
 

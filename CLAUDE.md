@@ -147,6 +147,7 @@ Environment file support via `.env` file in project root.
 ## API Endpoints
 
 - `POST /sms` - Handle incoming SMS messages (Twilio webhook)
+- `POST /sms/status` - Twilio delivery status callback for SMS replies
 - `POST /voice` - Handle incoming voice calls (Twilio webhook)
 - `POST /voice/find_stop` - Handle voice input/DTMF (Twilio webhook)
 - `GET /health` - Health check endpoint

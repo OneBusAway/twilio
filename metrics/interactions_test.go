@@ -56,3 +56,13 @@ func TestRecordLookupOutcome_NonErrorPassesThrough(t *testing.T) {
 		t.Errorf("missing stop_lookups_total ambiguous passthrough:\n%s", body)
 	}
 }
+
+func TestRecordSMSDeliveryFailure(t *testing.T) {
+	m := New()
+	m.RecordSMSDeliveryFailure("30034")
+	if body := scrape(m); !strings.Contains(body, `sms_delivery_failures_total{error_code="30034"} 1`) {
+		t.Errorf("missing sms_delivery_failures_total:\n%s", body)
+	}
+	var nilMetrics *Metrics
+	nilMetrics.RecordSMSDeliveryFailure("30034") // must not panic
+}
